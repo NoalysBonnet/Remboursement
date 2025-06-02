@@ -1,4 +1,3 @@
-# C:\Users\maxen\PycharmProjects\PythonProject\setup_users.py
 from models.user_model import ajouter_ou_mettre_a_jour_utilisateur_db, obtenir_info_utilisateur
 from config.settings import USER_DATA_FILE  # Pour afficher le chemin
 import os

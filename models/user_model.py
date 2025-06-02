@@ -1,4 +1,3 @@
-# C:\Users\maxen\PycharmProjects\PythonProject\models\user_model.py
 import json
 import os
 import time

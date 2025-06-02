@@ -1,4 +1,3 @@
-# C:\Users\maxen\PycharmProjects\PythonProject\views\login_view.py
 import customtkinter as ctk
 from tkinter import messagebox, simpledialog
 
@@ -13,30 +12,38 @@ class LoginView(ctk.CTkFrame):
         self.creer_widgets_connexion()
 
     def creer_widgets_connexion(self):
-        main_frame = ctk.CTkFrame(self, corner_radius=10)
-        main_frame.pack(pady=20, padx=30, fill="both", expand=True)
+        # Le frame principal de connexion s'adaptera à la fenêtre principale maximisée
+        # On peut utiliser place pour le centrer si besoin, ou laisser pack avec expand.
+        main_frame = ctk.CTkFrame(self, width=380, height=380,
+                                  corner_radius=10)  # Taille fixe pour le contenu de connexion
+        main_frame.place(relx=0.5, rely=0.5, anchor="center")  # Centrer le frame de connexion
 
         label_titre = ctk.CTkLabel(main_frame, text="Connexion Utilisateur", font=ctk.CTkFont(size=20, weight="bold"))
-        label_titre.pack(pady=(20, 15))
+        label_titre.pack(pady=(30, 15))  # Augmenté pady en haut
 
-        self.entry_utilisateur = ctk.CTkEntry(main_frame, placeholder_text="Nom d'utilisateur", width=200)
-        self.entry_utilisateur.pack(pady=10, padx=10)
+        self.entry_utilisateur = ctk.CTkEntry(main_frame, placeholder_text="Nom d'utilisateur",
+                                              width=250)  # Légèrement plus large
+        self.entry_utilisateur.pack(pady=10, padx=20)
         self.entry_utilisateur.bind("<Return>", lambda event: self._action_connexion())
 
-        self.entry_mdp = ctk.CTkEntry(main_frame, placeholder_text="Mot de passe", show="*", width=200)
-        self.entry_mdp.pack(pady=10, padx=10)
+        self.entry_mdp = ctk.CTkEntry(main_frame, placeholder_text="Mot de passe", show="*",
+                                      width=250)  # Légèrement plus large
+        self.entry_mdp.pack(pady=10, padx=20)
         self.entry_mdp.bind("<Return>", lambda event: self._action_connexion())
 
-        bouton_connexion = ctk.CTkButton(main_frame, text="Se connecter", command=self._action_connexion, width=150)
-        bouton_connexion.pack(pady=10, padx=10)
+        bouton_connexion = ctk.CTkButton(main_frame, text="Se connecter", command=self._action_connexion,
+                                         width=200)  # Légèrement plus large
+        bouton_connexion.pack(pady=10, padx=20)
 
         bouton_modifier_mdp = ctk.CTkButton(main_frame, text="Modifier mon mot de passe",
-                                            command=self._ouvrir_fenetre_modifier_mdp, width=200, fg_color="gray")
-        bouton_modifier_mdp.pack(pady=6, padx=10)
+                                            command=self._ouvrir_fenetre_modifier_mdp, width=220,
+                                            fg_color="gray")  # Légèrement plus large
+        bouton_modifier_mdp.pack(pady=6, padx=20)
 
         bouton_mdp_oublie = ctk.CTkButton(main_frame, text="Mot de passe oublié ?",
-                                          command=self._ouvrir_fenetre_mdp_oublie_etape1, width=200, fg_color="gray")
-        bouton_mdp_oublie.pack(pady=(6, 20), padx=10)
+                                          command=self._ouvrir_fenetre_mdp_oublie_etape1, width=220,
+                                          fg_color="gray")  # Légèrement plus large
+        bouton_mdp_oublie.pack(pady=(6, 30), padx=20)  # Augmenté pady en bas
 
         self.focus_set()
         self.after(100, lambda: self.entry_utilisateur.focus_set())
@@ -61,24 +68,24 @@ class LoginView(ctk.CTkFrame):
     def _ouvrir_fenetre_modifier_mdp(self):
         dialog = ctk.CTkToplevel(self.master)
         dialog.title("Modifier le mot de passe")
-        dialog.geometry("400x380")
+        dialog.geometry("480x420")  # Agrandie (était 400x380)
         dialog.transient(self.master)
         dialog.grab_set()
 
-        ctk.CTkLabel(dialog, text="Nom d'utilisateur:").pack(pady=(20, 0))
-        entry_user = ctk.CTkEntry(dialog, width=250)
+        ctk.CTkLabel(dialog, text="Nom d'utilisateur:", font=ctk.CTkFont(size=14)).pack(pady=(20, 0))
+        entry_user = ctk.CTkEntry(dialog, width=300, height=30)
         entry_user.pack(pady=5)
 
-        ctk.CTkLabel(dialog, text="Ancien mot de passe:").pack(pady=(10, 0))
-        entry_ancien_mdp = ctk.CTkEntry(dialog, show="*", width=250)
+        ctk.CTkLabel(dialog, text="Ancien mot de passe:", font=ctk.CTkFont(size=14)).pack(pady=(10, 0))
+        entry_ancien_mdp = ctk.CTkEntry(dialog, show="*", width=300, height=30)
         entry_ancien_mdp.pack(pady=5)
 
-        ctk.CTkLabel(dialog, text="Nouveau mot de passe:").pack(pady=(10, 0))
-        entry_nouveau_mdp = ctk.CTkEntry(dialog, show="*", width=250)
+        ctk.CTkLabel(dialog, text="Nouveau mot de passe:", font=ctk.CTkFont(size=14)).pack(pady=(10, 0))
+        entry_nouveau_mdp = ctk.CTkEntry(dialog, show="*", width=300, height=30)
         entry_nouveau_mdp.pack(pady=5)
 
-        ctk.CTkLabel(dialog, text="Confirmer nouveau mot de passe:").pack(pady=(10, 0))
-        entry_confirm_mdp = ctk.CTkEntry(dialog, show="*", width=250)
+        ctk.CTkLabel(dialog, text="Confirmer nouveau mot de passe:", font=ctk.CTkFont(size=14)).pack(pady=(10, 0))
+        entry_confirm_mdp = ctk.CTkEntry(dialog, show="*", width=300, height=30)
         entry_confirm_mdp.pack(pady=5)
 
         def valider_modification():
@@ -105,8 +112,9 @@ class LoginView(ctk.CTkFrame):
             else:
                 messagebox.showerror("Erreur", "Nom d'utilisateur ou ancien mot de passe incorrect.", parent=dialog)
 
-        bouton_valider_modif = ctk.CTkButton(dialog, text="Valider la Modification", command=valider_modification)
-        bouton_valider_modif.pack(pady=20)
+        bouton_valider_modif = ctk.CTkButton(dialog, text="Valider la Modification", command=valider_modification,
+                                             height=35)
+        bouton_valider_modif.pack(pady=25)  # Augmenté pady
         dialog.after(100, lambda: entry_user.focus_set())
 
     def _ouvrir_fenetre_mdp_oublie_etape1(self):
@@ -138,25 +146,26 @@ class LoginView(ctk.CTkFrame):
     def _ouvrir_fenetre_mdp_oublie_etape2(self, nom_utilisateur_pour_reset):
         dialog = ctk.CTkToplevel(self.master)
         dialog.title("Mot de passe oublié - Étape 2")
-        dialog.geometry("400x360")  # Hauteur légèrement augmentée
+        dialog.geometry("480x400")  # Agrandie (était 400x360)
         dialog.transient(self.master)
         dialog.grab_set()
 
         ctk.CTkLabel(dialog, text=f"Réinitialisation pour : {nom_utilisateur_pour_reset}",
-                     font=ctk.CTkFont(weight="bold")).pack(pady=(15, 5))
-        ctk.CTkLabel(dialog, text="Veuillez entrer le code reçu par email et votre nouveau mot de passe.").pack(pady=5,
-                                                                                                                padx=10)
+                     font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(20, 5))
+        ctk.CTkLabel(dialog, text="Veuillez entrer le code reçu par email et votre nouveau mot de passe.",
+                     font=ctk.CTkFont(size=12)).pack(pady=5, padx=10)
 
-        ctk.CTkLabel(dialog, text="Code de réinitialisation (5 chiffres):").pack(pady=(10, 0))
-        entry_code = ctk.CTkEntry(dialog, width=100, justify="center")
+        ctk.CTkLabel(dialog, text="Code de réinitialisation (5 chiffres):", font=ctk.CTkFont(size=14)).pack(
+            pady=(10, 0))
+        entry_code = ctk.CTkEntry(dialog, width=120, height=30, justify="center", font=ctk.CTkFont(size=14))
         entry_code.pack(pady=5)
 
-        ctk.CTkLabel(dialog, text="Nouveau mot de passe:").pack(pady=(10, 0))
-        entry_nouveau_mdp = ctk.CTkEntry(dialog, show="*", width=200)
+        ctk.CTkLabel(dialog, text="Nouveau mot de passe:", font=ctk.CTkFont(size=14)).pack(pady=(10, 0))
+        entry_nouveau_mdp = ctk.CTkEntry(dialog, show="*", width=250, height=30)
         entry_nouveau_mdp.pack(pady=5)
 
-        ctk.CTkLabel(dialog, text="Confirmer nouveau mot de passe:").pack(pady=(10, 0))
-        entry_confirm_mdp = ctk.CTkEntry(dialog, show="*", width=200)
+        ctk.CTkLabel(dialog, text="Confirmer nouveau mot de passe:", font=ctk.CTkFont(size=14)).pack(pady=(10, 0))
+        entry_confirm_mdp = ctk.CTkEntry(dialog, show="*", width=250, height=30)
         entry_confirm_mdp.pack(pady=5)
 
         def valider_reset():
@@ -184,8 +193,8 @@ class LoginView(ctk.CTkFrame):
             else:
                 messagebox.showerror("Erreur", msg_validation, parent=dialog)
 
-        # Le bouton de validation
-        bouton_valider_reset = ctk.CTkButton(dialog, text="Réinitialiser le mot de passe", command=valider_reset)
-        bouton_valider_reset.pack(pady=20)  # Assurez-vous que ce .pack() est bien là
+        bouton_valider_reset = ctk.CTkButton(dialog, text="Réinitialiser le mot de passe", command=valider_reset,
+                                             height=35)
+        bouton_valider_reset.pack(pady=25)  # Augmenté pady
 
         dialog.after(100, lambda: entry_code.focus_set())

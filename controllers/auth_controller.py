@@ -1,4 +1,3 @@
-# C:\Users\maxen\PycharmProjects\PythonProject\controllers\auth_controller.py
 from models import user_model
 from utils import email_utils, password_utils # password_utils n'est pas directmt utilisé ici, mais par user_model
 

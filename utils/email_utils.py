@@ -1,4 +1,3 @@
-# C:\Users\maxen\PycharmProjects\PythonProject\utils\email_utils.py
 import smtplib
 import ssl
 from email.message import EmailMessage

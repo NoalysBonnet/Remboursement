@@ -1,4 +1,3 @@
-# C:\Users\maxen\PycharmProjects\PythonProject\utils\password_utils.py
 from passlib.context import CryptContext
 
 # Contexte pour le hachage des mots de passe
