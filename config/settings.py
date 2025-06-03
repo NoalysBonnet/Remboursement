@@ -24,7 +24,7 @@ REMBOURSEMENTS_JSON_FILE = os.path.join(APP_DATA_DIR, "remboursements.json") #
 CONFIG_EMAIL_FILE = os.path.join(UNIVERSAL_APP_ROOT_PATH, "config", "config_email.ini") #
 SMTP_CONFIG = {} #
 
-LOCK_FILE_EXTENSION = ".lock" #
+# LOCK_FILE_EXTENSION = ".lock" # Supprimé
 
 # --- Statuts des demandes de remboursement ---
 STATUT_ANNULEE = "0. Demande Annulée" #
@@ -32,7 +32,7 @@ STATUT_CREEE = "1. Créée (en attente constat trop-perçu)" #
 STATUT_REFUSEE_CONSTAT_TP = "1b. Refusée par Compta. Trésorerie (action P. Neri)" #
 STATUT_TROP_PERCU_CONSTATE = "2. Trop-perçu constaté (en attente validation)" #
 STATUT_VALIDEE = "3. Validée (en attente de paiement)" #
-STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO = "3b. Refusée - Validation (action M. Lupo)" # Nom de statut plus précis
+STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO = "3b. Refusée - Validation (action M. Lupo)" #
 STATUT_PAIEMENT_EFFECTUE = "4. Paiement effectué (Terminée)" #
 
 

@@ -85,7 +85,7 @@ class RemboursementController:
         return chemin_fichier if chemin_fichier else None  #
 
     def get_toutes_les_demandes_formatees(self) -> list[dict]:  #
-        """Récupère toutes les demandes, prépare les chemins des PJ et vérifie les verrous."""
+        """Récupère toutes les demandes et prépare les chemins des PJ."""  # Suppression de "vérifie les verrous"
         demandes = remboursement_model.obtenir_toutes_les_demandes()  #
         demandes_formatees = []  #
         for demande_data in demandes:  #
@@ -101,11 +101,12 @@ class RemboursementController:
                     if abs_path:  #
                         demande_data["chemins_abs_trop_percu"].append(abs_path)  #
 
-            ref_dossier = demande_data.get("reference_facture_dossier")  #
-            if ref_dossier:  #
-                demande_data["locked_by"] = remboursement_model.is_demande_locked(ref_dossier)  #
-            else:  #
-                demande_data["locked_by"] = None  #
+            # Plus de champ locked_by à ajouter ici
+            # ref_dossier = demande_data.get("reference_facture_dossier")
+            # if ref_dossier:
+            #     demande_data["locked_by"] = remboursement_model.is_demande_locked(ref_dossier)
+            # else:
+            #     demande_data["locked_by"] = None
 
             demandes_formatees.append(demande_data)  #
         return sorted(demandes_formatees, key=lambda d: d.get("date_creation", ""), reverse=True)  #
@@ -151,15 +152,8 @@ class RemboursementController:
         except Exception as e:  #
             return False, f"Erreur lors de l'enregistrement du fichier : {e}"  #
 
-    def tenter_verrouillage_demande(self, reference_facture_dossier: str) -> bool:  #
-        """Tente de verrouiller une demande pour l'utilisateur actuel."""
-        if not reference_facture_dossier: return False  #
-        return remboursement_model.lock_demande(reference_facture_dossier, self.utilisateur_actuel)  #
-
-    def liberer_verrou_demande(self, reference_facture_dossier: str) -> bool:  #
-        """Libère le verrou d'une demande pour l'utilisateur actuel."""
-        if not reference_facture_dossier: return False  #
-        return remboursement_model.unlock_demande(reference_facture_dossier, self.utilisateur_actuel)  #
+    # Les méthodes tenter_verrouillage_demande et liberer_verrou_demande sont supprimées
+    # car le système de verrouillage par fichier .lock est retiré.
 
     def supprimer_demande(self, id_demande: str) -> tuple[bool, str]:  #
         """Gère la suppression d'une demande de remboursement."""
@@ -168,7 +162,7 @@ class RemboursementController:
     def mlupo_accepter_constat(  #
             self,
             id_demande: str,
-            ref_dossier: str,
+            # ref_dossier: str, # Plus besoin de ref_dossier pour le verrouillage ici
             chemin_pj_trop_percu_source: str,
             commentaire: str
     ) -> tuple[bool, str]:
@@ -176,9 +170,6 @@ class RemboursementController:
             return False, f"Fichier de preuve de trop-perçu obligatoire et non trouvé : {chemin_pj_trop_percu_source}"  #
         if not commentaire.strip():  #
             return False, "Un commentaire est obligatoire pour cette action."  #
-
-        # Le verrouillage est géré par la vue avant d'appeler cette méthode du contrôleur.
-        # Ici, on se concentre sur les actions métier.
 
         succes_pj, msg_pj, _ = remboursement_model.ajouter_piece_jointe_trop_percu(
             id_demande, chemin_pj_trop_percu_source, self.utilisateur_actuel
@@ -192,46 +183,40 @@ class RemboursementController:
 
         return succes_statut, msg_statut  #
 
-    def mlupo_refuser_constat(self, id_demande: str, ref_dossier: str, commentaire: str) -> tuple[bool, str]:  #
+    def mlupo_refuser_constat(self, id_demande: str, commentaire: str) -> tuple[bool, str]:  # ref_dossier supprimé
         """m.lupo refuse le constat, ajoute commentaire, demande retourne à p.neri."""
         if not commentaire.strip():  #
             return False, "Un commentaire est obligatoire pour justifier le refus."  #
 
-        # Le verrouillage est géré par la vue.
         succes, message = remboursement_model.refuser_constat_trop_percu(
             id_demande, commentaire, self.utilisateur_actuel
         )  #
         return succes, message  #
 
-    def pneri_annuler_demande(self, id_demande: str, ref_dossier: str, commentaire: str) -> tuple[bool, str]:  #
+    def pneri_annuler_demande(self, id_demande: str, commentaire: str) -> tuple[bool, str]:  # ref_dossier supprimé
         """p.neri annule une demande (typiquement après un refus de m.lupo)."""
         if not commentaire.strip():  #
             return False, "Un commentaire est requis pour l'annulation."  #
 
-        # Le verrouillage est géré par la vue.
         succes, message = remboursement_model.annuler_demande(
             id_demande, commentaire, self.utilisateur_actuel
         )  #
         return succes, message  #
 
-    # --- Méthodes pour l'étape de j.durousset (validation) ---
-    def jdurousset_valider_demande(self, id_demande: str, ref_dossier: str, commentaire: str | None) -> tuple[
-        bool, str]:
+    def jdurousset_valider_demande(self, id_demande: str, commentaire: str | None) -> tuple[
+        bool, str]:  # ref_dossier supprimé
         """j.durousset valide la demande."""
-        # Commentaire est optionnel pour validation, mais peut être requis par la modale.
-        # Le verrouillage est géré par la vue.
         succes, message = remboursement_model.valider_demande_par_validateur(
             id_demande, commentaire, self.utilisateur_actuel
-        )
-        return succes, message
+        )  #
+        return succes, message  #
 
-    def jdurousset_refuser_demande(self, id_demande: str, ref_dossier: str, commentaire: str) -> tuple[bool, str]:
+    def jdurousset_refuser_demande(self, id_demande: str, commentaire: str) -> tuple[bool, str]:  # ref_dossier supprimé
         """j.durousset refuse la demande, la renvoyant à m.lupo."""
-        if not commentaire.strip():
-            return False, "Un commentaire est obligatoire pour justifier le refus."
+        if not commentaire.strip():  #
+            return False, "Un commentaire est obligatoire pour justifier le refus."  #
 
-        # Le verrouillage est géré par la vue.
         succes, message = remboursement_model.refuser_demande_par_validateur(
             id_demande, commentaire, self.utilisateur_actuel
-        )
-        return succes, message
+        )  #
+        return succes, message  #
