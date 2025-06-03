@@ -1,69 +1,89 @@
-from models.user_model import ajouter_ou_mettre_a_jour_utilisateur_db, obtenir_info_utilisateur
-from config.settings import USER_DATA_FILE  # Pour afficher le chemin
+from models.user_model import ajouter_ou_mettre_a_jour_utilisateur_db, obtenir_info_utilisateur  #
+from config.settings import USER_DATA_FILE  #
 import os
 
 
-def initialiser_utilisateurs():
-    print("Configuration des utilisateurs initiaux...")
+def initialiser_utilisateurs():  #
+    print("Configuration des utilisateurs initiaux...")  #
 
-    utilisateurs_a_creer = {
-        "p.neri": {"nom_complet": "Philipe Neri", "email": "p.neri@noalys.com"},
-        "m.compta": {"nom_complet": "Marie Compta", "email": "compta-tresorerie@noalys.com"},
-        "j.durousset": {"nom_complet": "Juliette Durousset", "email": "j.durousset@noalys.com"},
-        "p.compta.fourn": {"nom_complet": "Pascale Compta Fourn", "email": "compta.fourn.natecia@noalys.com"},
-        "admin.stagiaire": {"nom_complet": "Admin Stagiaire", "email": "info.stagiaire.noalys@gmail.com"}
-        # Votre compte admin
+    # Définition des utilisateurs avec leurs emails et rôles par défaut
+    utilisateurs_par_defaut = {
+        "p.neri": {"nom_complet": "Philipe Neri", "email": "p.neri@noalys.com", "roles": ["demandeur"]},  #
+        "m.lupo": {"nom_complet": "Marie Lupo", "email": "compta-tresorerie@noalys.com",
+                   "roles": ["comptable_tresorerie"]},  # Renommé et email mis à jour si besoin
+        "j.durousset": {"nom_complet": "Juliette Durousset", "email": "j.durousset@noalys.com",
+                        "roles": ["validateur_chef"]},  #
+        "p.diop": {"nom_complet": "Pascale Diop", "email": "compta.fourn.natecia@noalys.com",
+                   "roles": ["comptable_fournisseur"]},  # Renommé et email mis à jour si besoin
+        "admin": {
+            "nom_complet": "Administrateur Système",
+            "email": "info.stagiaire.noalys@gmail.com",  # Email corrigé
+            "roles": [
+                "admin",
+                "demandeur",
+                "comptable_tresorerie",
+                "validateur_chef",
+                "comptable_fournisseur",
+                "visualiseur_seul"
+            ]
+        },
+        "b.gonnet": {"nom_complet": "Baptiste Gonnet", "email": "b.gonnet@noalys.com", "roles": ["validateur_chef"]},
+        # Nouvel utilisateur
+        "m.fessy": {"nom_complet": "Morgane Fessy", "email": "m.fessy@noalys.com", "roles": ["visualiseur_seul"]}
+        # Nouvel utilisateur
     }
 
-    for login, details in utilisateurs_a_creer.items():
-        nom_complet = details["nom_complet"]
-        email_suggere = details["email"]
+    for login, details_defaut in utilisateurs_par_defaut.items():  #
+        nom_complet = details_defaut["nom_complet"]  #
+        email_suggere = details_defaut["email"]  #
+        roles_suggeres = details_defaut["roles"]  #
 
-        utilisateur_existant = obtenir_info_utilisateur(login)
-        if utilisateur_existant:
-            print(f"\nL'utilisateur {nom_complet} (login: {login}) existe déjà.")
-            modifier = input("  Voulez-vous mettre à jour son mot de passe et email ? (o/N): ").lower()
-            if modifier != 'o':
-                continue
+        utilisateur_existant = obtenir_info_utilisateur(login)  #
 
-        print(f"\nConfiguration pour {nom_complet} (login: {login})")
-        email_utilisateur = input(
-            f"  Email (actuel/suggéré: {utilisateur_existant['email'] if utilisateur_existant else email_suggere}): ") or \
-                            (utilisateur_existant['email'] if utilisateur_existant else email_suggere)
+        email_a_utiliser = email_suggere
+        roles_a_utiliser = roles_suggeres
 
-        mdp = input(f"  Entrez le mot de passe pour {login}: ")
-        if not mdp and not utilisateur_existant:  # Mdp requis pour un nouvel utilisateur
-            print(f"  Mot de passe requis pour un nouvel utilisateur {login}. Utilisateur non ajouté.")
-            continue
-        if not mdp and utilisateur_existant:  # Si pas de mdp, on garde l'ancien
-            print(f"  Pas de changement de mot de passe pour {login}.")
-            # Si vous voulez juste maj l'email sans changer de mdp, il faudrait une logique plus fine
-            # Pour l'instant, si le mdp est vide, on ne fait rien pour simplifier.
-            # ou utiliser l'ancien hash si on veut juste maj l'email:
-            # mdp_pour_db = None # Indiquerait de ne pas changer le hash
-            # mais ajouter_ou_mettre_a_jour_utilisateur_db attend un mdp pour le hacher
-            # Donc pour l'instant, il faut entrer un mdp pour mettre à jour, même si c'est l'ancien.
-            if input(
-                    "  Confirmer la mise à jour sans changer le mot de passe ? (nécessite de retaper l'ancien ou un nouveau) (o/N): ").lower() != 'o':
-                continue
-            mdp = input(f"  Veuillez retaper l'ancien mot de passe ou un nouveau pour {login}: ")
+        if utilisateur_existant:  #
+            print(f"\nL'utilisateur {nom_complet} (login: {login}) existe déjà.")  #
+            email_a_utiliser = utilisateur_existant.get("email", email_suggere)  #
+            roles_a_utiliser = utilisateur_existant.get("roles", roles_suggeres)  #
 
-        if mdp and email_utilisateur:  # mdp peut être vide si on garde l'ancien (pas encore implémenté)
-            ajouter_ou_mettre_a_jour_utilisateur_db(login, mdp, email_utilisateur)
-            print(f"  Utilisateur '{login}' configuré avec l'email '{email_utilisateur}'.")
-        elif not mdp and utilisateur_existant:
-            print(f"  Aucun nouveau mot de passe fourni pour {login}, les informations n'ont pas été mises à jour.")
+            modifier = input(
+                f"  Email actuel: {email_a_utiliser}, Rôles actuels: {roles_a_utiliser}. Mettre à jour mot de passe, email et rôles ? (o/N): ").lower()  #
+            if modifier != 'o':  #
+                continue  #
         else:
-            print(f"  Informations (mot de passe ou email) manquantes pour {login}. Utilisateur non ajouté/modifié.")
+            print(f"\nCréation du nouvel utilisateur {nom_complet} (login: {login}).")
 
-    print("\nConfiguration terminée.")
-    chemin_fichier_json = os.path.abspath(USER_DATA_FILE)
-    print(f"Le fichier utilisateurs devrait se trouver ici : {chemin_fichier_json}")
-    if os.path.exists(chemin_fichier_json):
-        print("Le fichier utilisateurs.json a été trouvé/créé.")
-    else:
-        print("ATTENTION: Le fichier utilisateurs.json n'a pas été trouvé. Vérifiez les chemins et permissions.")
+        print(f"Configuration pour {nom_complet} (login: {login})")  #
+
+        email_input = input(f"  Email (laisser vide pour '{email_a_utiliser}'): ")  #
+        email_final = email_input or email_a_utiliser  #
+
+        # Pour la modification interactive des rôles :
+        roles_input_str = input(f"  Rôles (séparés par virgule, laisser vide pour '{','.join(roles_a_utiliser)}'): ")
+        if roles_input_str.strip():
+            roles_final = [role.strip() for role in roles_input_str.split(',') if role.strip()]
+        else:
+            roles_final = roles_a_utiliser
+
+        mdp = input(f"  Entrez le mot de passe pour {login} (laisser vide si existant et non modifié): ")  #
+
+        if not mdp and not utilisateur_existant:  #
+            print(f"  Mot de passe requis pour un nouvel utilisateur {login}. Utilisateur non ajouté.")  #
+            continue  #
+
+        ajouter_ou_mettre_a_jour_utilisateur_db(login, mdp if mdp else None, email_final, roles_final)  #
+        print(f"  Utilisateur '{login}' configuré avec l'email '{email_final}' et rôles {roles_final}.")  #
+
+    print("\nConfiguration terminée.")  #
+    chemin_fichier_json = os.path.abspath(USER_DATA_FILE)  #
+    print(f"Le fichier utilisateurs devrait se trouver ici : {chemin_fichier_json}")  #
+    if os.path.exists(chemin_fichier_json):  #
+        print("Le fichier utilisateurs.json a été trouvé/créé.")  #
+    else:  #
+        print("ATTENTION: Le fichier utilisateurs.json n'a pas été trouvé. Vérifiez les chemins et permissions.")  #
 
 
-if __name__ == "__main__":
-    initialiser_utilisateurs()
+if __name__ == "__main__":  #
+    initialiser_utilisateurs()  #

@@ -1,69 +1,80 @@
 import os
 import configparser
+import sys #
 
-# --- Chemins de base ---
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # Racine du projet PythonProject
-DATA_DIR_NAME = "donnees_partagees_mock"
-DATA_DIR = os.path.join(BASE_DIR, DATA_DIR_NAME)
+def get_application_base_path(): #
+    """ Obtient le chemin de base de l'application, que ce soit en mode script ou compilé. """
+    if getattr(sys, 'frozen', False): #
+        return os.path.dirname(sys.executable) #
+    else: #
+        return os.path.dirname(os.path.dirname(os.path.abspath(__file__))) #
 
-# --- Nouveau chemin pour les dossiers de remboursement ---
-REMBOURSEMENT_DIR_NAME = "Demande_Remboursement"
-REMBOURSEMENT_BASE_DIR = os.path.join(BASE_DIR, REMBOURSEMENT_DIR_NAME)
+UNIVERSAL_APP_ROOT_PATH = get_application_base_path() #
 
-# Fichiers de données
-USER_DATA_FILE = os.path.join(DATA_DIR, "utilisateurs.json")
-RESET_CODES_FILE = os.path.join(DATA_DIR, "codes_reset.json")
-# Le fichier JSON des remboursements reste dans DATA_DIR
-REMBOURSEMENTS_JSON_FILE = os.path.join(DATA_DIR, "remboursements.json")
+APP_DATA_SUBDIR_NAME = "donnees_partagees_mock" #
+REMBOURSEMENT_FILES_SUBDIR_NAME = "Demande_Remboursement" #
+
+APP_DATA_DIR = os.path.join(UNIVERSAL_APP_ROOT_PATH, APP_DATA_SUBDIR_NAME) #
+REMBOURSEMENT_BASE_DIR = os.path.join(UNIVERSAL_APP_ROOT_PATH, REMBOURSEMENT_FILES_SUBDIR_NAME) #
+
+USER_DATA_FILE = os.path.join(APP_DATA_DIR, "utilisateurs.json") #
+RESET_CODES_FILE = os.path.join(APP_DATA_DIR, "codes_reset.json") #
+REMBOURSEMENTS_JSON_FILE = os.path.join(APP_DATA_DIR, "remboursements.json") #
+
+CONFIG_EMAIL_FILE = os.path.join(UNIVERSAL_APP_ROOT_PATH, "config", "config_email.ini") #
+SMTP_CONFIG = {} #
+
+LOCK_FILE_EXTENSION = ".lock" #
+
+# --- Statuts des demandes de remboursement ---
+STATUT_ANNULEE = "0. Demande Annulée" #
+STATUT_CREEE = "1. Créée (en attente constat trop-perçu)" #
+STATUT_REFUSEE_CONSTAT_TP = "1b. Refusée par Compta. Trésorerie (action P. Neri)" #
+STATUT_TROP_PERCU_CONSTATE = "2. Trop-perçu constaté (en attente validation)" #
+STATUT_VALIDEE = "3. Validée (en attente de paiement)" #
+STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO = "3b. Refusée - Validation (action M. Lupo)" # Nom de statut plus précis
+STATUT_PAIEMENT_EFFECTUE = "4. Paiement effectué (Terminée)" #
 
 
-# --- Configuration Email ---
-CONFIG_EMAIL_FILE = os.path.join(BASE_DIR, "config", "config_email.ini")
-SMTP_CONFIG = {}
-
-def load_smtp_config():
+def load_smtp_config(): #
     """Charge la configuration SMTP depuis config_email.ini."""
-    global SMTP_CONFIG
-    if not os.path.exists(CONFIG_EMAIL_FILE):
-        print(f"ATTENTION: Le fichier de configuration email '{CONFIG_EMAIL_FILE}' est manquant.")
-        print("Veuillez créer ce fichier à partir de 'config_email_template.ini' et le remplir.")
-        SMTP_CONFIG = None # Indique que la config n'a pas pu être chargée
-        return
+    global SMTP_CONFIG #
+    if not os.path.exists(CONFIG_EMAIL_FILE): #
+        print(f"ATTENTION: Le fichier de configuration email '{CONFIG_EMAIL_FILE}' est manquant.") #
+        print("Veuillez créer ce fichier à partir de 'config_email_template.ini' et le remplir.") #
+        SMTP_CONFIG = None #
+        return #
 
-    config = configparser.ConfigParser()
-    config.read(CONFIG_EMAIL_FILE)
-    if 'SMTP' in config:
-        SMTP_CONFIG = dict(config.items('SMTP'))
-        # Conversion du port en entier et ssl/tls en booléen
-        if 'port' in SMTP_CONFIG:
-            try:
-                SMTP_CONFIG['port'] = int(SMTP_CONFIG['port'])
-            except ValueError:
-                print(f"ATTENTION: Le port SMTP dans '{CONFIG_EMAIL_FILE}' n'est pas un nombre valide.")
-                SMTP_CONFIG = None
-                return
-        for key in ['use_tls', 'use_ssl']:
-            if key in SMTP_CONFIG:
-                SMTP_CONFIG[key] = config.getboolean('SMTP', key)
-    else:
-        print(f"ATTENTION: La section [SMTP] est manquante dans '{CONFIG_EMAIL_FILE}'.")
-        SMTP_CONFIG = None
+    config = configparser.ConfigParser() #
+    config.read(CONFIG_EMAIL_FILE) #
+    if 'SMTP' in config: #
+        SMTP_CONFIG = dict(config.items('SMTP')) #
+        if 'port' in SMTP_CONFIG: #
+            try: #
+                SMTP_CONFIG['port'] = int(SMTP_CONFIG['port']) #
+            except ValueError: #
+                print(f"ATTENTION: Le port SMTP dans '{CONFIG_EMAIL_FILE}' n'est pas un nombre valide.") #
+                SMTP_CONFIG = None #
+                return #
+        for key in ['use_tls', 'use_ssl']: #
+            if key in SMTP_CONFIG: #
+                SMTP_CONFIG[key] = config.getboolean('SMTP', key) #
+    else: #
+        print(f"ATTENTION: La section [SMTP] est manquante dans '{CONFIG_EMAIL_FILE}'.") #
+        SMTP_CONFIG = None #
 
-def ensure_dir_exists(directory_path: str, dir_description: str):
+def ensure_dir_exists(directory_path: str, dir_description: str): #
     """S'assure qu'un dossier existe, le crée sinon."""
-    if not os.path.exists(directory_path):
-        try:
-            os.makedirs(directory_path)
-            print(f"Dossier '{dir_description}' ('{directory_path}') créé.")
-        except OSError as e:
-            print(f"Erreur critique lors de la création du dossier '{dir_description}' ('{directory_path}'): {e}")
-            raise # Propage l'erreur, car c'est critique
+    if not os.path.exists(directory_path): #
+        try: #
+            os.makedirs(directory_path) #
+            print(f"Dossier '{dir_description}' ('{directory_path}') créé.") #
+        except OSError as e: #
+            print(f"Erreur critique lors de la création du dossier '{dir_description}' ('{directory_path}'): {e}") #
 
-# Charger la config email et s'assurer que les dossiers existent au démarrage
-load_smtp_config()
-ensure_dir_exists(DATA_DIR, "de données partagées mock")
-ensure_dir_exists(REMBOURSEMENT_BASE_DIR, "de base des remboursements")
+load_smtp_config() #
+ensure_dir_exists(APP_DATA_DIR, "de données partagées mock") #
+ensure_dir_exists(REMBOURSEMENT_BASE_DIR, "de base des remboursements") #
 
-# Pour l'utiliser dans app.py par exemple, on peut garder une fonction spécifique si besoin
-def ensure_data_dir_exists(): # Reste pour compatibilité si ensure_dir_exists n'est pas appelé directement
-    ensure_dir_exists(DATA_DIR, "de données partagées mock")
+def ensure_data_dir_exists(): #
+     ensure_dir_exists(APP_DATA_DIR, "de données partagées mock") #

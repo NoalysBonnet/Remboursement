@@ -5,6 +5,8 @@ import os
 import sys  #
 import subprocess  #
 import shutil  #
+from config.settings import STATUT_CREEE, STATUT_TROP_PERCU_CONSTATE, STATUT_REFUSEE_CONSTAT_TP, STATUT_ANNULEE, \
+    STATUT_VALIDEE, STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO  #
 
 
 class RemboursementController:
@@ -23,15 +25,10 @@ class RemboursementController:
             prenom: str,
             reference_facture: str,
             montant_demande_str: str,
-            chemin_facture_source: str | None,  # Facture optionnelle
+            chemin_facture_source: str | None,  #
             chemin_rib_source: str,
-            description: str  # Nouveau champ
+            description: str  #
     ) -> tuple[bool, str]:  #
-        """
-        Valide les données et crée une nouvelle demande de remboursement.
-        Retourne (succès, message_ou_id_demande).
-        """  #
-        # Champs obligatoires
         if not nom:  #
             return False, "Le champ 'Nom' est obligatoire."  #
         if not prenom:  #
@@ -40,8 +37,8 @@ class RemboursementController:
             return False, "Le champ 'Référence Facture' est obligatoire."  #
         if not montant_demande_str:  #
             return False, "Le champ 'Montant demandé' est obligatoire."  #
-        if not description:
-            return False, "Le champ 'Description/Raison de la demande' est obligatoire."
+        if not description:  #
+            return False, "Le champ 'Description/Raison de la demande' est obligatoire."  #
         if not chemin_rib_source:  #
             return False, "La sélection du fichier RIB est obligatoire."  #
 
@@ -52,11 +49,10 @@ class RemboursementController:
         except ValueError:  #
             return False, "Le montant demandé doit être un nombre valide."  #
 
-        # Vérification de l'existence des fichiers si les chemins sont fournis
         if chemin_facture_source and not os.path.exists(chemin_facture_source):  #
             return False, f"Fichier facture non trouvé : {chemin_facture_source}"  #
 
-        if not os.path.exists(chemin_rib_source):  # # chemin_rib_source est vérifié non-vide plus haut
+        if not os.path.exists(chemin_rib_source):  #
             return False, f"Fichier RIB non trouvé : {chemin_rib_source}"  #
 
         nouvelle_demande = remboursement_model.creer_nouvelle_demande(
@@ -67,7 +63,7 @@ class RemboursementController:
             chemin_facture_source=chemin_facture_source,  #
             chemin_rib_source=chemin_rib_source,  #
             utilisateur_createur=self.utilisateur_actuel,  #
-            description=description  # Nouveau champ
+            description=description  #
         )
 
         if nouvelle_demande:  #
@@ -75,16 +71,21 @@ class RemboursementController:
         else:  #
             return False, "Erreur lors de la création de la demande dans le modèle."  #
 
-    def selectionner_fichier_pdf(self, titre_dialogue="Sélectionner un fichier PDF") -> str | None:  #
-        """Ouvre une boîte de dialogue pour sélectionner un fichier PDF."""
+    def selectionner_fichier_piece_jointe(self, titre_dialogue="Sélectionner un fichier") -> str | None:  #
+        """Ouvre une boîte de dialogue pour sélectionner un fichier (PDF ou Image)."""
         chemin_fichier = filedialog.askopenfilename(
             title=titre_dialogue,  #
-            filetypes=(("Fichiers PDF", "*.pdf"), ("Tous les fichiers", "*.*"))  #
+            filetypes=(("Tous les fichiers pris en charge", "*.pdf *.png *.jpg *.jpeg *.gif"),  #
+                       ("Fichiers PDF", "*.pdf"),
+                       ("Images PNG", "*.png"),
+                       ("Images JPEG", "*.jpg *.jpeg"),
+                       ("Images GIF", "*.gif"),
+                       ("Tous les fichiers", "*.*"))
         )
         return chemin_fichier if chemin_fichier else None  #
 
     def get_toutes_les_demandes_formatees(self) -> list[dict]:  #
-        """Récupère toutes les demandes et prépare les chemins des PJ pour la vue."""
+        """Récupère toutes les demandes, prépare les chemins des PJ et vérifie les verrous."""
         demandes = remboursement_model.obtenir_toutes_les_demandes()  #
         demandes_formatees = []  #
         for demande_data in demandes:  #
@@ -92,6 +93,20 @@ class RemboursementController:
                 demande_data.get("chemin_facture_stockee"))  #
             demande_data["chemin_abs_rib"] = remboursement_model.get_chemin_absolu_piece_jointe(
                 demande_data.get("chemin_rib_stocke"))  #
+
+            demande_data["chemins_abs_trop_percu"] = []  #
+            if demande_data.get("pieces_capture_trop_percu"):  #
+                for rel_path in demande_data["pieces_capture_trop_percu"]:  #
+                    abs_path = remboursement_model.get_chemin_absolu_piece_jointe(rel_path)  #
+                    if abs_path:  #
+                        demande_data["chemins_abs_trop_percu"].append(abs_path)  #
+
+            ref_dossier = demande_data.get("reference_facture_dossier")  #
+            if ref_dossier:  #
+                demande_data["locked_by"] = remboursement_model.is_demande_locked(ref_dossier)  #
+            else:  #
+                demande_data["locked_by"] = None  #
+
             demandes_formatees.append(demande_data)  #
         return sorted(demandes_formatees, key=lambda d: d.get("date_creation", ""), reverse=True)  #
 
@@ -124,7 +139,8 @@ class RemboursementController:
             defaultextension=os.path.splitext(nom_fichier_original)[1],  #
             initialfile=nom_fichier_original,  #
             title="Enregistrer la pièce jointe sous...",  #
-            filetypes=(("Fichiers PDF", "*.pdf"), ("Tous les fichiers", "*.*"))  #
+            filetypes=(("Tous les fichiers pris en charge", "*.pdf *.png *.jpg *.jpeg"), ("Fichiers PDF", "*.pdf"),
+                       ("Images", "*.png *.jpg *.jpeg"), ("Tous les fichiers", "*.*"))  #
         )
         if not chemin_destination:  #
             return False, "Téléchargement annulé par l'utilisateur."  #
@@ -134,3 +150,88 @@ class RemboursementController:
             return True, f"Fichier enregistré avec succès sous {chemin_destination}"  #
         except Exception as e:  #
             return False, f"Erreur lors de l'enregistrement du fichier : {e}"  #
+
+    def tenter_verrouillage_demande(self, reference_facture_dossier: str) -> bool:  #
+        """Tente de verrouiller une demande pour l'utilisateur actuel."""
+        if not reference_facture_dossier: return False  #
+        return remboursement_model.lock_demande(reference_facture_dossier, self.utilisateur_actuel)  #
+
+    def liberer_verrou_demande(self, reference_facture_dossier: str) -> bool:  #
+        """Libère le verrou d'une demande pour l'utilisateur actuel."""
+        if not reference_facture_dossier: return False  #
+        return remboursement_model.unlock_demande(reference_facture_dossier, self.utilisateur_actuel)  #
+
+    def supprimer_demande(self, id_demande: str) -> tuple[bool, str]:  #
+        """Gère la suppression d'une demande de remboursement."""
+        return remboursement_model.supprimer_demande_par_id(id_demande)  #
+
+    def mlupo_accepter_constat(  #
+            self,
+            id_demande: str,
+            ref_dossier: str,
+            chemin_pj_trop_percu_source: str,
+            commentaire: str
+    ) -> tuple[bool, str]:
+        if not chemin_pj_trop_percu_source or not os.path.exists(chemin_pj_trop_percu_source):  #
+            return False, f"Fichier de preuve de trop-perçu obligatoire et non trouvé : {chemin_pj_trop_percu_source}"  #
+        if not commentaire.strip():  #
+            return False, "Un commentaire est obligatoire pour cette action."  #
+
+        # Le verrouillage est géré par la vue avant d'appeler cette méthode du contrôleur.
+        # Ici, on se concentre sur les actions métier.
+
+        succes_pj, msg_pj, _ = remboursement_model.ajouter_piece_jointe_trop_percu(
+            id_demande, chemin_pj_trop_percu_source, self.utilisateur_actuel
+        )  #
+        if not succes_pj:  #
+            return False, f"Erreur PJ: {msg_pj}"  #
+
+        succes_statut, msg_statut = remboursement_model.accepter_constat_trop_percu(
+            id_demande, commentaire, self.utilisateur_actuel
+        )  #
+
+        return succes_statut, msg_statut  #
+
+    def mlupo_refuser_constat(self, id_demande: str, ref_dossier: str, commentaire: str) -> tuple[bool, str]:  #
+        """m.lupo refuse le constat, ajoute commentaire, demande retourne à p.neri."""
+        if not commentaire.strip():  #
+            return False, "Un commentaire est obligatoire pour justifier le refus."  #
+
+        # Le verrouillage est géré par la vue.
+        succes, message = remboursement_model.refuser_constat_trop_percu(
+            id_demande, commentaire, self.utilisateur_actuel
+        )  #
+        return succes, message  #
+
+    def pneri_annuler_demande(self, id_demande: str, ref_dossier: str, commentaire: str) -> tuple[bool, str]:  #
+        """p.neri annule une demande (typiquement après un refus de m.lupo)."""
+        if not commentaire.strip():  #
+            return False, "Un commentaire est requis pour l'annulation."  #
+
+        # Le verrouillage est géré par la vue.
+        succes, message = remboursement_model.annuler_demande(
+            id_demande, commentaire, self.utilisateur_actuel
+        )  #
+        return succes, message  #
+
+    # --- Méthodes pour l'étape de j.durousset (validation) ---
+    def jdurousset_valider_demande(self, id_demande: str, ref_dossier: str, commentaire: str | None) -> tuple[
+        bool, str]:
+        """j.durousset valide la demande."""
+        # Commentaire est optionnel pour validation, mais peut être requis par la modale.
+        # Le verrouillage est géré par la vue.
+        succes, message = remboursement_model.valider_demande_par_validateur(
+            id_demande, commentaire, self.utilisateur_actuel
+        )
+        return succes, message
+
+    def jdurousset_refuser_demande(self, id_demande: str, ref_dossier: str, commentaire: str) -> tuple[bool, str]:
+        """j.durousset refuse la demande, la renvoyant à m.lupo."""
+        if not commentaire.strip():
+            return False, "Un commentaire est obligatoire pour justifier le refus."
+
+        # Le verrouillage est géré par la vue.
+        succes, message = remboursement_model.refuser_demande_par_validateur(
+            id_demande, commentaire, self.utilisateur_actuel
+        )
+        return succes, message

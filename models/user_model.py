@@ -3,104 +3,130 @@ import os
 import time
 import random
 import string
-from utils.password_utils import generer_hachage_mdp, verifier_mdp
-from config.settings import USER_DATA_FILE, RESET_CODES_FILE, ensure_data_dir_exists
+from utils.password_utils import generer_hachage_mdp, verifier_mdp  #
+from config.settings import USER_DATA_FILE, RESET_CODES_FILE, ensure_data_dir_exists  #
 
-# S'assurer que le dossier de données existe au chargement du module
-ensure_data_dir_exists()
-
-
-def _charger_fichier_json(chemin_fichier: str) -> dict:
-    if os.path.exists(chemin_fichier):
-        try:
-            with open(chemin_fichier, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except (json.JSONDecodeError, FileNotFoundError):
-            return {}  # Fichier corrompu ou problème d'accès
-    return {}
+ensure_data_dir_exists()  #
 
 
-def _sauvegarder_fichier_json(chemin_fichier: str, donnees: dict):
-    with open(chemin_fichier, 'w', encoding='utf-8') as f:
-        json.dump(donnees, f, indent=4)
+def _charger_fichier_json(chemin_fichier: str) -> dict:  #
+    if os.path.exists(chemin_fichier):  #
+        try:  #
+            with open(chemin_fichier, 'r', encoding='utf-8') as f:  #
+                return json.load(f)  #
+        except (json.JSONDecodeError, FileNotFoundError):  #
+            return {}  #
+    return {}  #
 
 
-# Fonctions pour les utilisateurs
-def obtenir_tous_les_utilisateurs() -> dict:
-    return _charger_fichier_json(USER_DATA_FILE)
+def _sauvegarder_fichier_json(chemin_fichier: str, donnees: dict):  #
+    with open(chemin_fichier, 'w', encoding='utf-8') as f:  #
+        json.dump(donnees, f, indent=4)  #
 
 
-def sauvegarder_les_utilisateurs(donnees_utilisateurs: dict):
-    _sauvegarder_fichier_json(USER_DATA_FILE, donnees_utilisateurs)
+def obtenir_tous_les_utilisateurs() -> dict:  #
+    return _charger_fichier_json(USER_DATA_FILE)  #
 
 
-def ajouter_ou_mettre_a_jour_utilisateur_db(nom_utilisateur: str, mot_de_passe: str, email: str):
+def sauvegarder_les_utilisateurs(donnees_utilisateurs: dict):  #
+    _sauvegarder_fichier_json(USER_DATA_FILE, donnees_utilisateurs)  #
+
+
+def ajouter_ou_mettre_a_jour_utilisateur_db(nom_utilisateur: str, mot_de_passe: str | None, email: str,
+                                            roles: list[str] | None = None):  #
+    utilisateurs = obtenir_tous_les_utilisateurs()  #
+
+    user_data = utilisateurs.get(nom_utilisateur, {})
+
+    if mot_de_passe:  # Seulement si un nouveau mdp est fourni
+        hachage = generer_hachage_mdp(mot_de_passe)  #
+        user_data["hashed_password"] = hachage  #
+    elif not utilisateur_existant(nom_utilisateur):  # Si nouvel utilisateur, mdp est requis
+        print(f"Erreur: Mot de passe requis pour le nouvel utilisateur {nom_utilisateur}.")
+        return
+
+    user_data["email"] = email  #
+    user_data["roles"] = roles if roles is not None else user_data.get("roles", [
+        "default"])  # Conserve les rôles existants ou met "default"
+
+    utilisateurs[nom_utilisateur] = user_data
+    sauvegarder_les_utilisateurs(utilisateurs)  #
+
+
+def utilisateur_existant(nom_utilisateur: str) -> bool:
     utilisateurs = obtenir_tous_les_utilisateurs()
-    hachage = generer_hachage_mdp(mot_de_passe)
-    utilisateurs[nom_utilisateur] = {
-        "hashed_password": hachage,
-        "email": email
-    }
-    sauvegarder_les_utilisateurs(utilisateurs)
+    return nom_utilisateur in utilisateurs
 
 
-def obtenir_info_utilisateur(nom_utilisateur: str) -> dict | None:
-    utilisateurs = obtenir_tous_les_utilisateurs()
-    return utilisateurs.get(nom_utilisateur)
+def obtenir_info_utilisateur(nom_utilisateur: str) -> dict | None:  #
+    utilisateurs = obtenir_tous_les_utilisateurs()  #
+    return utilisateurs.get(nom_utilisateur)  #
 
 
-def modifier_mot_de_passe(nom_utilisateur: str, ancien_mdp_saisi: str, nouveau_mdp: str) -> bool:
-    info_utilisateur = obtenir_info_utilisateur(nom_utilisateur)
-    if info_utilisateur and verifier_mdp(ancien_mdp_saisi, info_utilisateur.get("hashed_password")):
-        nouveau_hachage = generer_hachage_mdp(nouveau_mdp)
-        utilisateurs = obtenir_tous_les_utilisateurs()  # Recharger pour éviter écrasement de données concurrentes
-        utilisateurs[nom_utilisateur]["hashed_password"] = nouveau_hachage
-        sauvegarder_les_utilisateurs(utilisateurs)
-        return True
-    return False
+def modifier_mot_de_passe(nom_utilisateur: str, ancien_mdp_saisi: str, nouveau_mdp: str) -> bool:  #
+    info_utilisateur = obtenir_info_utilisateur(nom_utilisateur)  #
+    if info_utilisateur and verifier_mdp(ancien_mdp_saisi, info_utilisateur.get("hashed_password")):  #
+        nouveau_hachage = generer_hachage_mdp(nouveau_mdp)  #
+        utilisateurs = obtenir_tous_les_utilisateurs()  #
+        utilisateurs[nom_utilisateur]["hashed_password"] = nouveau_hachage  #
+        sauvegarder_les_utilisateurs(utilisateurs)  #
+        return True  #
+    return False  #
 
 
-def reinitialiser_mot_de_passe(nom_utilisateur: str, nouveau_mdp: str) -> bool:
+def reinitialiser_mot_de_passe(nom_utilisateur: str, nouveau_mdp: str) -> bool:  #
+    utilisateurs = obtenir_tous_les_utilisateurs()  #
+    if nom_utilisateur in utilisateurs:  #
+        nouveau_hachage = generer_hachage_mdp(nouveau_mdp)  #
+        utilisateurs[nom_utilisateur]["hashed_password"] = nouveau_hachage  #
+        sauvegarder_les_utilisateurs(utilisateurs)  #
+        return True  #
+    return False  #
+
+
+# --- Fonctions pour la suppression d'utilisateur (pour l'admin) ---
+def supprimer_utilisateur_db(nom_utilisateur: str) -> bool:
     utilisateurs = obtenir_tous_les_utilisateurs()
     if nom_utilisateur in utilisateurs:
-        nouveau_hachage = generer_hachage_mdp(nouveau_mdp)
-        utilisateurs[nom_utilisateur]["hashed_password"] = nouveau_hachage
+        if nom_utilisateur == "admin":  # Sécurité: Empêcher la suppression du compte admin principal
+            print("Erreur: Le compte 'admin' principal ne peut pas être supprimé.")
+            return False
+        del utilisateurs[nom_utilisateur]
         sauvegarder_les_utilisateurs(utilisateurs)
         return True
     return False
 
 
-# Fonctions pour les codes de réinitialisation
-def _generer_code_alphanumerique(longueur=5) -> str:
-    return "".join(random.choices(string.digits, k=longueur))  # Chiffres seulement pour simplicité
+# Fonctions pour les codes de réinitialisation (inchangées)
+def _generer_code_alphanumerique(longueur=5) -> str:  #
+    return "".join(random.choices(string.digits, k=longueur))  #
 
 
-def stocker_code_reset_db(nom_utilisateur: str, duree_validite_sec: int = 300) -> str | None:
-    codes_actifs = _charger_fichier_json(RESET_CODES_FILE)
-    code = _generer_code_alphanumerique()
+def stocker_code_reset_db(nom_utilisateur: str, duree_validite_sec: int = 300) -> str | None:  #
+    codes_actifs = _charger_fichier_json(RESET_CODES_FILE)  #
+    code = _generer_code_alphanumerique()  #
 
-    codes_actifs[nom_utilisateur] = {
-        "code": code,
-        "expiration": time.time() + duree_validite_sec
+    codes_actifs[nom_utilisateur] = {  #
+        "code": code,  #
+        "expiration": time.time() + duree_validite_sec  #
     }
-    _sauvegarder_fichier_json(RESET_CODES_FILE, codes_actifs)
-    return code
+    _sauvegarder_fichier_json(RESET_CODES_FILE, codes_actifs)  #
+    return code  #
 
 
-def verifier_et_supprimer_code_reset_db(nom_utilisateur: str, code_saisi: str) -> bool:
-    codes_actifs = _charger_fichier_json(RESET_CODES_FILE)
-    info_code = codes_actifs.get(nom_utilisateur)
-    valide = False
+def verifier_et_supprimer_code_reset_db(nom_utilisateur: str, code_saisi: str) -> bool:  #
+    codes_actifs = _charger_fichier_json(RESET_CODES_FILE)  #
+    info_code = codes_actifs.get(nom_utilisateur)  #
+    valide = False  #
 
-    if info_code and info_code["code"] == code_saisi:
-        if time.time() < info_code["expiration"]:
-            valide = True
-        else:
-            print(f"Code de réinitialisation pour {nom_utilisateur} expiré.")
+    if info_code and info_code["code"] == code_saisi:  #
+        if time.time() < info_code["expiration"]:  #
+            valide = True  #
+        else:  #
+            print(f"Code de réinitialisation pour {nom_utilisateur} expiré.")  #
 
-    # Toujours supprimer le code (ou la tentative) après vérification pour éviter réutilisation
-    if nom_utilisateur in codes_actifs:
-        del codes_actifs[nom_utilisateur]
-        _sauvegarder_fichier_json(RESET_CODES_FILE, codes_actifs)
+    if nom_utilisateur in codes_actifs:  #
+        del codes_actifs[nom_utilisateur]  #
+        _sauvegarder_fichier_json(RESET_CODES_FILE, codes_actifs)  #
 
-    return valide
+    return valide  #
