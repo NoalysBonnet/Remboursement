@@ -2,59 +2,78 @@
 import os
 import datetime
 import shutil
-from . import remboursement_data  # Utiliser l'import relatif
+from . import remboursement_data
 from config.settings import (
     REMBOURSEMENT_BASE_DIR,
     STATUT_CREEE, STATUT_TROP_PERCU_CONSTATE,
     STATUT_REFUSEE_CONSTAT_TP, STATUT_ANNULEE,
-    STATUT_VALIDEE, STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO
+    STATUT_VALIDEE, STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO,
+    STATUT_PAIEMENT_EFFECTUE
 )
 
 
-def _sanitize_directory_name_workflow(name: str) -> str:  # Wrapper pour garder la fonction locale si besoin
+def _sanitize_directory_name_workflow(name: str) -> str:
     return remboursement_data._sanitize_directory_name(name)
 
 
-def ajouter_piece_jointe_trop_percu_action(id_demande: str, chemin_pj_source: str, utilisateur: str) -> tuple[
-    bool, str, str | None]:
+def _ajouter_pj_a_liste(id_demande: str, chemin_pj_source: str, utilisateur: str, type_pj_key: str,
+                        prefixe_nom_fichier: str) -> tuple[bool, str, str | None]:
+    """Helper pour ajouter une PJ à une liste de PJ d'une demande et la copier."""
     demande_data_obj = remboursement_data.obtenir_demande_par_id_data(id_demande)
     if not demande_data_obj:
         return False, "Demande non trouvée.", None
 
     ref_dossier = demande_data_obj.get("reference_facture_dossier")
     if not ref_dossier:
-        return False, "Référence de dossier non trouvée pour la demande.", None
+        return False, "Référence de dossier non trouvée.", None
 
     dossier_demande_specifique = os.path.join(REMBOURSEMENT_BASE_DIR, ref_dossier)
     os.makedirs(dossier_demande_specifique, exist_ok=True)
 
-    nom_original_pj = os.path.basename(chemin_pj_source)
-    nom_fichier_pj_stockee = f"trop_percu_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}_{_sanitize_directory_name_workflow(nom_original_pj)}"
+    base_nom_pj = os.path.basename(chemin_pj_source)
+
+    current_pjs_list = demande_data_obj.get(type_pj_key, [])
+    # S'assurer que c'est une liste, surtout pour la rétrocompatibilité si une ancienne entrée était une chaîne
+    if not isinstance(current_pjs_list, list):
+        current_pjs_list = [current_pjs_list] if current_pjs_list else []
+
+    version_index = len(current_pjs_list) + 1
+
+    # Nom de fichier versionné pour éviter les écrasements
+    nom_fichier_pj_stockee = f"{prefixe_nom_fichier}_v{version_index}_{ref_dossier}_{_sanitize_directory_name_workflow(base_nom_pj)}"
     chemin_pj_destination = os.path.join(dossier_demande_specifique, nom_fichier_pj_stockee)
 
     try:
         shutil.copy2(chemin_pj_source, chemin_pj_destination)
     except Exception as e:
-        return False, f"Erreur lors de la copie de la PJ : {e}", None
+        return False, f"Erreur lors de la copie de la pièce jointe '{base_nom_pj}' ({prefixe_nom_fichier}): {e}", None
 
     chemin_pj_relatif = os.path.join(ref_dossier, nom_fichier_pj_stockee)
 
-    # Mise à jour de la liste des PJ et des timestamps
-    current_pjs = demande_data_obj.get("pieces_capture_trop_percu", [])
-    current_pjs.append(chemin_pj_relatif)
+    current_pjs_list.append(chemin_pj_relatif)  # Ajouter le nouveau chemin à la liste
 
     updates = {
-        "pieces_capture_trop_percu": current_pjs,
+        type_pj_key: current_pjs_list,  # Mettre à jour la demande avec la liste complète des PJ
         "derniere_modification_par": utilisateur,
         "date_derniere_modification": datetime.datetime.now().isoformat()
     }
     succes_maj = remboursement_data.mettre_a_jour_demande_data(id_demande, updates)
+
     if succes_maj:
-        return True, "Pièce jointe de trop-perçu ajoutée.", chemin_pj_relatif
+        return True, f"Pièce jointe '{base_nom_pj}' (v{version_index}) ajoutée.", chemin_pj_relatif
     else:
-        # Tenter de supprimer la PJ copiée si la mise à jour du JSON échoue (pour la cohérence)
-        if os.path.exists(chemin_pj_destination): os.remove(chemin_pj_destination)
+        # Tenter de supprimer la PJ copiée si la mise à jour du JSON échoue
+        if os.path.exists(chemin_pj_destination):
+            try:
+                os.remove(chemin_pj_destination)
+            except OSError:
+                pass  # Ignorer si la suppression échoue aussi
         return False, "Erreur lors de la mise à jour des données de la demande après copie PJ.", None
+
+
+def ajouter_piece_jointe_trop_percu_action(id_demande: str, chemin_pj_source: str, utilisateur: str) -> tuple[
+    bool, str, str | None]:
+    return _ajouter_pj_a_liste(id_demande, chemin_pj_source, utilisateur, "pieces_capture_trop_percu", "trop_percu")
 
 
 def accepter_constat_trop_percu_action(id_demande: str, commentaire: str, utilisateur: str) -> tuple[bool, str]:
@@ -112,7 +131,6 @@ def annuler_demande_action(id_demande: str, commentaire: str, utilisateur_annula
     demande_actuelle = remboursement_data.obtenir_demande_par_id_data(id_demande)
     if not demande_actuelle: return False, "Demande non trouvée."
     if demande_actuelle.get("statut") == STATUT_ANNULEE: return False, "Demande déjà annulée."
-    # Idéalement, vérifier si l'utilisateur_annulant est le créateur ou admin, et si statut = STATUT_REFUSEE_CONSTAT_TP
 
     updates = {
         "statut": STATUT_ANNULEE,
@@ -149,7 +167,7 @@ tuple[bool, str]:
         "statut": STATUT_VALIDEE,
         "date": updates["date_derniere_modification"],
         "par": utilisateur_validateur,
-        "commentaire": commentaire if commentaire else "Demande validée par validateur."
+        "commentaire": commentaire if commentaire and commentaire.strip() else "Demande validée par validateur."
     }
     succes_maj_demande = remboursement_data.mettre_a_jour_demande_data(id_demande, updates)
     succes_hist = remboursement_data.ajouter_entree_historique_data(id_demande, nouvelle_entree_historique)
@@ -183,3 +201,116 @@ def refuser_demande_par_validateur_action(id_demande: str, commentaire: str, uti
     if succes_maj_demande and succes_hist:
         return True, f"Demande refusée par validateur. Statut: '{STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO}'."
     return False, "Erreur lors du refus de la demande par le validateur."
+
+
+def confirmer_paiement_action(id_demande: str, utilisateur_pdiop: str, commentaire: str | None) -> tuple[bool, str]:
+    demande_actuelle = remboursement_data.obtenir_demande_par_id_data(id_demande)
+    if not demande_actuelle:
+        return False, "Demande non trouvée."
+    if demande_actuelle.get("statut") != STATUT_VALIDEE:
+        return False, f"La demande n'est pas au statut '{STATUT_VALIDEE}' pour confirmation du paiement."
+
+    date_paiement = datetime.datetime.now().isoformat()
+    updates = {
+        "statut": STATUT_PAIEMENT_EFFECTUE,
+        "derniere_modification_par": utilisateur_pdiop,
+        "date_derniere_modification": date_paiement,
+        "date_paiement_effectue": date_paiement,
+    }
+    nouvelle_entree_historique = {
+        "statut": STATUT_PAIEMENT_EFFECTUE,
+        "date": date_paiement,
+        "par": utilisateur_pdiop,
+        "commentaire": commentaire if commentaire and commentaire.strip() else "Paiement effectué."
+    }
+
+    succes_maj_demande = remboursement_data.mettre_a_jour_demande_data(id_demande, updates)
+    succes_hist = remboursement_data.ajouter_entree_historique_data(id_demande, nouvelle_entree_historique)
+
+    if succes_maj_demande and succes_hist:
+        return True, f"Paiement confirmé. Demande terminée. Statut: '{STATUT_PAIEMENT_EFFECTUE}'."
+    return False, "Erreur lors de la confirmation du paiement."
+
+
+def pneri_resoumettre_demande_action(id_demande: str, nouveau_commentaire: str,
+                                     nouveau_chemin_facture_source: str | None,
+                                     nouveau_chemin_rib_source: str,
+                                     utilisateur: str) -> tuple[bool, str]:
+    demande_actuelle = remboursement_data.obtenir_demande_par_id_data(id_demande)
+    if not demande_actuelle: return False, "Demande non trouvée."
+    if demande_actuelle.get("statut") != STATUT_REFUSEE_CONSTAT_TP:
+        return False, f"La demande n'est pas au statut '{STATUT_REFUSEE_CONSTAT_TP}'."
+
+    # Ajouter nouvelle facture si fournie
+    if nouveau_chemin_facture_source:
+        succes_fact, msg_fact, _ = _ajouter_pj_a_liste(id_demande, nouveau_chemin_facture_source, utilisateur,
+                                                       "chemins_factures_stockees", "facture")
+        if not succes_fact: return False, msg_fact
+
+    # Ajouter nouveau RIB (obligatoire pour resoumission)
+    succes_rib, msg_rib, _ = _ajouter_pj_a_liste(id_demande, nouveau_chemin_rib_source, utilisateur,
+                                                 "chemins_rib_stockes", "RIB")
+    if not succes_rib: return False, msg_rib
+
+    # Mettre à jour le statut et l'historique APRÈS l'ajout des PJs
+    updates = {
+        "statut": STATUT_CREEE,
+        "derniere_modification_par": utilisateur,
+        "date_derniere_modification": datetime.datetime.now().isoformat()
+    }
+    nouvelle_entree_historique = {
+        "statut": STATUT_CREEE,
+        "date": updates["date_derniere_modification"],
+        "par": utilisateur,
+        "commentaire": f"Demande corrigée et resoumise: {nouveau_commentaire}"
+    }
+
+    succes_maj_demande = remboursement_data.mettre_a_jour_demande_data(id_demande, updates)
+    # L'historique doit être ajouté après la mise à jour principale du statut pour éviter que l'update l'écrase si historique_statuts est dans updates
+    # Cependant, ajouter_entree_historique_data recharge et sauvegarde, donc l'ordre est important.
+    # Il est préférable que mettre_a_jour_demande_data ne touche pas à historique_statuts si ce n'est pas explicitement dans 'updates'.
+    # La logique actuelle de _ajouter_pj_a_liste fait un mettre_a_jour_demande_data, puis on refait un ici.
+    # Il serait mieux de collecter tous les updates et de faire une seule sauvegarde.
+
+    # Pour simplifier et assurer l'ordre :
+    # 1. Mettre à jour la demande principale (statut, modif_par, date_modif)
+    # 2. Ajouter l'entrée d'historique séparément (qui re-sauvegardera)
+    succes_hist = remboursement_data.ajouter_entree_historique_data(id_demande, nouvelle_entree_historique)
+
+    if succes_maj_demande and succes_hist:
+        return True, f"Demande corrigée et resoumise. Statut: '{STATUT_CREEE}'."
+    return False, "Erreur lors de la resoumission de la demande corrigée."
+
+
+def mlupo_resoumettre_constat_action(id_demande: str, nouveau_commentaire: str,
+                                     nouveau_chemin_pj_trop_percu_source: str,
+                                     utilisateur: str) -> tuple[bool, str]:
+    demande_actuelle = remboursement_data.obtenir_demande_par_id_data(id_demande)
+    if not demande_actuelle: return False, "Demande non trouvée."
+    if demande_actuelle.get("statut") != STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO:
+        return False, f"La demande n'est pas au statut '{STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO}'."
+
+    # 1. Ajouter la nouvelle PJ de trop-perçu
+    succes_pj, msg_pj, _ = ajouter_piece_jointe_trop_percu_action(id_demande, nouveau_chemin_pj_trop_percu_source,
+                                                                  utilisateur)
+    if not succes_pj: return False, msg_pj
+
+    # 2. Mettre à jour le statut et l'historique
+    updates = {
+        "statut": STATUT_TROP_PERCU_CONSTATE,
+        "derniere_modification_par": utilisateur,
+        "date_derniere_modification": datetime.datetime.now().isoformat()
+    }
+    nouvelle_entree_historique = {
+        "statut": STATUT_TROP_PERCU_CONSTATE,
+        "date": updates["date_derniere_modification"],
+        "par": utilisateur,
+        "commentaire": f"Constat corrigé et resoumis: {nouveau_commentaire}"
+    }
+
+    succes_maj_demande = remboursement_data.mettre_a_jour_demande_data(id_demande, updates)
+    succes_hist = remboursement_data.ajouter_entree_historique_data(id_demande, nouvelle_entree_historique)
+
+    if succes_maj_demande and succes_hist:
+        return True, f"Constat corrigé et resoumis. Statut: '{STATUT_TROP_PERCU_CONSTATE}'."
+    return False, "Erreur lors de la resoumission du constat corrigé."
