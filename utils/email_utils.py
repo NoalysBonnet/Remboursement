@@ -1,3 +1,4 @@
+# utils/email_utils.py
 import smtplib
 import ssl
 from email.message import EmailMessage
@@ -33,11 +34,11 @@ def envoyer_email_reset(destinataire_email: str, nom_utilisateur: str, code_rese
     try:
         context = ssl.create_default_context()
         server = None
-        if SMTP_CONFIG.get('use_ssl', 'false').lower() == 'true':
-            server = smtplib.SMTP_SSL(SMTP_CONFIG['server'], int(SMTP_CONFIG['port']), context=context)
-        else: # TLS par défaut
-            server = smtplib.SMTP(SMTP_CONFIG['server'], int(SMTP_CONFIG['port']))
-            if SMTP_CONFIG.get('use_tls', 'true').lower() == 'true':
+        if SMTP_CONFIG.get('use_ssl', False):
+            server = smtplib.SMTP_SSL(SMTP_CONFIG['server'], SMTP_CONFIG['port'], context=context)
+        else:
+            server = smtplib.SMTP(SMTP_CONFIG['server'], SMTP_CONFIG['port'])
+            if SMTP_CONFIG.get('use_tls', True):
                  server.starttls(context=context)
 
         server.login(SMTP_CONFIG['email_sender'], SMTP_CONFIG['password'])

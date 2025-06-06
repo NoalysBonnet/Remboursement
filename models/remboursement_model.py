@@ -5,7 +5,7 @@ import uuid
 import shutil
 from . import remboursement_data
 from . import remboursement_workflow
-from config.settings import REMBOURSEMENT_BASE_DIR, STATUT_CREEE
+from config.settings import REMBOURSEMENT_FILES_DIR, STATUT_CREEE
 
 # Réexporter les fonctions
 obtenir_toutes_les_demandes = remboursement_data.charger_toutes_les_demandes_data
@@ -38,7 +38,7 @@ def creer_nouvelle_demande(
     if not ref_facture_sanitized or ref_facture_sanitized in ["ref_inconnue", "ref_invalide"]:  #
         ref_facture_sanitized = f"demande_{id_unique_demande}"  #
 
-    dossier_demande_specifique = os.path.join(REMBOURSEMENT_BASE_DIR, ref_facture_sanitized)  #
+    dossier_demande_specifique = os.path.join(REMBOURSEMENT_FILES_DIR, ref_facture_sanitized)  #
     try:  #
         os.makedirs(dossier_demande_specifique, exist_ok=True)  #
     except OSError as e:  #
@@ -106,4 +106,4 @@ def get_chemin_absolu_piece_jointe(chemin_relatif_pj: str | None) -> str | None:
     """Construit le chemin absolu vers une pièce jointe à partir de son chemin relatif."""
     if not chemin_relatif_pj:  #
         return None  #
-    return os.path.join(REMBOURSEMENT_BASE_DIR, chemin_relatif_pj)  #
+    return os.path.join(REMBOURSEMENT_FILES_DIR, chemin_relatif_pj)  #

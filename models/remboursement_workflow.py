@@ -4,7 +4,7 @@ import datetime
 import shutil
 from . import remboursement_data
 from config.settings import (
-    REMBOURSEMENT_BASE_DIR,
+    REMBOURSEMENT_FILES_DIR,
     STATUT_CREEE, STATUT_TROP_PERCU_CONSTATE,
     STATUT_REFUSEE_CONSTAT_TP, STATUT_ANNULEE,
     STATUT_VALIDEE, STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO,
@@ -27,7 +27,7 @@ def _ajouter_pj_a_liste(id_demande: str, chemin_pj_source: str, utilisateur: str
     if not ref_dossier:
         return False, "Référence de dossier non trouvée.", None
 
-    dossier_demande_specifique = os.path.join(REMBOURSEMENT_BASE_DIR, ref_dossier)
+    dossier_demande_specifique = os.path.join(REMBOURSEMENT_FILES_DIR, ref_dossier)
     os.makedirs(dossier_demande_specifique, exist_ok=True)
 
     base_nom_pj = os.path.basename(chemin_pj_source)
@@ -266,15 +266,6 @@ def pneri_resoumettre_demande_action(id_demande: str, nouveau_commentaire: str,
     }
 
     succes_maj_demande = remboursement_data.mettre_a_jour_demande_data(id_demande, updates)
-    # L'historique doit être ajouté après la mise à jour principale du statut pour éviter que l'update l'écrase si historique_statuts est dans updates
-    # Cependant, ajouter_entree_historique_data recharge et sauvegarde, donc l'ordre est important.
-    # Il est préférable que mettre_a_jour_demande_data ne touche pas à historique_statuts si ce n'est pas explicitement dans 'updates'.
-    # La logique actuelle de _ajouter_pj_a_liste fait un mettre_a_jour_demande_data, puis on refait un ici.
-    # Il serait mieux de collecter tous les updates et de faire une seule sauvegarde.
-
-    # Pour simplifier et assurer l'ordre :
-    # 1. Mettre à jour la demande principale (statut, modif_par, date_modif)
-    # 2. Ajouter l'entrée d'historique séparément (qui re-sauvegardera)
     succes_hist = remboursement_data.ajouter_entree_historique_data(id_demande, nouvelle_entree_historique)
 
     if succes_maj_demande and succes_hist:

@@ -1,3 +1,4 @@
+# views/main_view.py
 import os
 import customtkinter as ctk
 from tkinter import messagebox, simpledialog
@@ -16,7 +17,7 @@ from views.document_history_viewer import DocumentHistoryViewer
 from views.admin_user_management_view import AdminUserManagementView
 from views.help_view import HelpView
 
-POLLING_INTERVAL_MS = 10000
+POLLING_INTERVAL_MS = 5000
 
 COULEUR_ACTIVE_POUR_UTILISATEUR = "#1E4D2B"
 COULEUR_DEMANDE_TERMINEE = "#2E4374"
@@ -36,6 +37,7 @@ class MainView(ctk.CTkFrame):
         self.remboursement_controller = remboursement_controller_factory(self.nom_utilisateur)
         self.auth_controller = auth_controller_instance
 
+        self.all_demandes_cache = []
         self._last_known_remboursements_mtime = 0
         self._polling_job_id = None
         self.user_roles = []
@@ -54,7 +56,7 @@ class MainView(ctk.CTkFrame):
             self.creer_conteneur_liste_demandes()
             self.creer_legende_couleurs()
 
-            self.afficher_liste_demandes()
+            self.afficher_liste_demandes(force_reload=True)
             self.start_polling()
         except Exception as e:
             print(f"ERREUR CRITIQUE DANS MainView.__init__: {e}")
@@ -115,7 +117,7 @@ class MainView(ctk.CTkFrame):
             bouton_nouvelle_demande.pack(side="left", pady=5, padx=(0, 10))
 
         bouton_rafraichir = ctk.CTkButton(actions_bar_frame, text="Rafraîchir Liste",
-                                          command=self.afficher_liste_demandes, width=150)
+                                          command=lambda: self.afficher_liste_demandes(force_reload=True), width=150)
         bouton_rafraichir.pack(side="left", pady=5, padx=10)
 
         if self.est_admin():
@@ -153,7 +155,7 @@ class MainView(ctk.CTkFrame):
         self.search_var.set("")
 
     def _on_search_change(self, *args):
-        self.afficher_liste_demandes()
+        self.afficher_liste_demandes(force_reload=False)
 
     def creer_conteneur_liste_demandes(self):
         self.scrollable_frame_demandes = ctk.CTkScrollableFrame(self.main_content_frame,
@@ -180,35 +182,23 @@ class MainView(ctk.CTkFrame):
 
     def _check_for_data_updates(self):
         try:
+            current_mtime = 0
             if os.path.exists(REMBOURSEMENTS_JSON_FILE):
                 current_mtime = os.path.getmtime(REMBOURSEMENTS_JSON_FILE)
-                if self._last_known_remboursements_mtime == 0:
-                    self._last_known_remboursements_mtime = current_mtime
-                elif current_mtime > self._last_known_remboursements_mtime:
-                    print(
-                        f"{datetime.datetime.now()}: Détection de modifications dans les données de remboursement, rafraîchissement...")
-                    self._last_known_remboursements_mtime = current_mtime
-                    self.afficher_liste_demandes()
-            else:
-                if self._last_known_remboursements_mtime != 0:
-                    print(
-                        f"{datetime.datetime.now()}: Fichier remboursements.json non trouvé, réinitialisation du suivi.")
-                    self.afficher_liste_demandes()
-                self._last_known_remboursements_mtime = 0
+
+            if current_mtime != self._last_known_remboursements_mtime:
+                print(f"{datetime.datetime.now()}: Détection de modifications externes, rafraîchissement forcé...")
+                self._last_known_remboursements_mtime = current_mtime
+                self.afficher_liste_demandes(force_reload=True)
         except Exception as e:
             print(f"Erreur lors du polling des données: {e}")
-
-        if self.winfo_exists():
-            self._polling_job_id = self.after(POLLING_INTERVAL_MS, self._check_for_data_updates)
+        finally:
+            if self.winfo_exists():
+                self._polling_job_id = self.after(POLLING_INTERVAL_MS, self._check_for_data_updates)
 
     def start_polling(self):
-        if self._polling_job_id:
-            self.after_cancel(self._polling_job_id)
-        if os.path.exists(REMBOURSEMENTS_JSON_FILE):
-            self._last_known_remboursements_mtime = os.path.getmtime(REMBOURSEMENTS_JSON_FILE)
-        else:
-            self._last_known_remboursements_mtime = 0
-
+        self.stop_polling()
+        self._last_known_remboursements_mtime = 0  # Force check on first run
         self._check_for_data_updates()
 
     def stop_polling(self):
@@ -216,27 +206,31 @@ class MainView(ctk.CTkFrame):
             self.after_cancel(self._polling_job_id)
             self._polling_job_id = None
 
-    def afficher_liste_demandes(self, source_is_polling=False):
-        self._fetch_user_roles()
-
-        if hasattr(self, 'no_demandes_label_widget') and self.no_demandes_label_widget:
-            self.no_demandes_label_widget.destroy()
-            self.no_demandes_label_widget = None
+    def afficher_liste_demandes(self, force_reload: bool = False):
+        if force_reload:
+            self._fetch_user_roles()
+            self.all_demandes_cache = self.remboursement_controller.get_toutes_les_demandes_formatees()
+            if os.path.exists(REMBOURSEMENTS_JSON_FILE):
+                self._last_known_remboursements_mtime = os.path.getmtime(REMBOURSEMENTS_JSON_FILE)
 
         for widget in self.scrollable_frame_demandes.winfo_children():
             widget.destroy()
 
-        toutes_les_demandes_data = self.remboursement_controller.get_toutes_les_demandes_formatees()
         terme_recherche = self.search_var.get().lower().strip() if hasattr(self, 'search_var') else ""
         demandes_a_afficher_data = []
+
         if not terme_recherche:
-            demandes_a_afficher_data = toutes_les_demandes_data
+            demandes_a_afficher_data = self.all_demandes_cache
         else:
-            for d_data in toutes_les_demandes_data:
+            for d_data in self.all_demandes_cache:
                 if (terme_recherche in d_data.get('nom', '').lower() or
                         terme_recherche in d_data.get('prenom', '').lower() or
                         terme_recherche in d_data.get('reference_facture', '').lower()):
                     demandes_a_afficher_data.append(d_data)
+
+        if self.no_demandes_label_widget:
+            self.no_demandes_label_widget.destroy()
+            self.no_demandes_label_widget = None
 
         if not demandes_a_afficher_data:
             message_texte = "Aucune demande de remboursement à afficher."
@@ -323,7 +317,7 @@ class MainView(ctk.CTkFrame):
             if succes:
                 messagebox.showinfo("Succès", msg, parent=self)
                 dialog.destroy()
-                self.afficher_liste_demandes()
+                self.afficher_liste_demandes(force_reload=True)
             else:
                 messagebox.showerror("Erreur", msg, parent=dialog)
 
@@ -342,7 +336,7 @@ class MainView(ctk.CTkFrame):
             succes, msg = self.remboursement_controller.mlupo_refuser_constat(id_demande, commentaire)
             if succes:
                 messagebox.showinfo("Refus Enregistré", msg, parent=self)
-                self.afficher_liste_demandes()
+                self.afficher_liste_demandes(force_reload=True)
             else:
                 messagebox.showerror("Erreur", msg, parent=self)
 
@@ -356,7 +350,7 @@ class MainView(ctk.CTkFrame):
                                                                                    commentaire.strip() if commentaire else None)
             if succes:
                 messagebox.showinfo("Validation Réussie", msg, parent=self)
-                self.afficher_liste_demandes()
+                self.afficher_liste_demandes(force_reload=True)
             else:
                 messagebox.showerror("Erreur de Validation", msg, parent=self)
 
@@ -373,7 +367,7 @@ class MainView(ctk.CTkFrame):
             succes, msg = self.remboursement_controller.jdurousset_refuser_demande(id_demande, commentaire)
             if succes:
                 messagebox.showinfo("Refus Enregistré", msg, parent=self)
-                self.afficher_liste_demandes()
+                self.afficher_liste_demandes(force_reload=True)
             else:
                 messagebox.showerror("Erreur de Refus", msg, parent=self)
 
@@ -387,7 +381,7 @@ class MainView(ctk.CTkFrame):
                                                                                           commentaire.strip() if commentaire else None)
             if succes:
                 messagebox.showinfo("Paiement Confirmé", msg, parent=self)
-                self.afficher_liste_demandes()
+                self.afficher_liste_demandes(force_reload=True)
             else:
                 messagebox.showerror("Erreur", msg, parent=self)
 
@@ -403,7 +397,7 @@ class MainView(ctk.CTkFrame):
             succes, msg = self.remboursement_controller.pneri_annuler_demande(id_demande, commentaire)
             if succes:
                 messagebox.showinfo("Demande Annulée", msg, parent=self)
-                self.afficher_liste_demandes()
+                self.afficher_liste_demandes(force_reload=True)
             else:
                 messagebox.showerror("Erreur", msg, parent=self)
 
@@ -467,7 +461,7 @@ class MainView(ctk.CTkFrame):
             if succes:
                 messagebox.showinfo("Succès", msg, parent=self)
                 dialog.destroy()
-                self.afficher_liste_demandes()
+                self.afficher_liste_demandes(force_reload=True)
             else:
                 messagebox.showerror("Erreur", msg, parent=dialog)
 
@@ -518,7 +512,7 @@ class MainView(ctk.CTkFrame):
             if succes:
                 messagebox.showinfo("Succès", msg, parent=self)
                 dialog.destroy()
-                self.afficher_liste_demandes()
+                self.afficher_liste_demandes(force_reload=True)
             else:
                 messagebox.showerror("Erreur", msg, parent=dialog)
 
@@ -537,7 +531,7 @@ class MainView(ctk.CTkFrame):
             succes, message = self.remboursement_controller.supprimer_demande(id_demande)
             if succes:
                 messagebox.showinfo("Suppression réussie", message, parent=self)
-                self.afficher_liste_demandes()
+                self.afficher_liste_demandes(force_reload=True)
             else:
                 messagebox.showerror("Erreur de suppression", message, parent=self)
 
@@ -660,7 +654,7 @@ class MainView(ctk.CTkFrame):
             if succes:
                 messagebox.showinfo("Succès", message, parent=dialog)
                 dialog.destroy()
-                self.afficher_liste_demandes()
+                self.afficher_liste_demandes(force_reload=True)
             else:
                 messagebox.showerror("Erreur", message, parent=dialog)
 

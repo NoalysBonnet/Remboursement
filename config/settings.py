@@ -9,22 +9,41 @@ def get_application_base_path():
     else:
         return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-UNIVERSAL_APP_ROOT_PATH = get_application_base_path()
+APP_ROOT_PATH = get_application_base_path()
 
-APP_DATA_SUBDIR_NAME = "donnees_partagees_mock"
-REMBOURSEMENT_FILES_SUBDIR_NAME = "Demande_Remboursement"
+# --- CONFIGURATION DES CHEMINS DE DONNÉES ---
+# IMPORTANT : Adaptez ce chemin pour le déploiement final.
+# C'est l'unique emplacement où les données partagées (JSON, dossiers de demandes) seront lues et écrites.
+# Exemple pour un lecteur réseau mappé 'P:': "P:\\Applications\\GestionRemboursements\\DonneesPartagees"
+# Exemple pour un chemin UNC : "\\\\SERVEUR\\Partage\\GestionRemboursements\\DonneesPartagees"
 
-APP_DATA_DIR = os.path.join(UNIVERSAL_APP_ROOT_PATH, APP_DATA_SUBDIR_NAME)
-REMBOURSEMENT_BASE_DIR = os.path.join(UNIVERSAL_APP_ROOT_PATH, REMBOURSEMENT_FILES_SUBDIR_NAME)
+# MODE DÉPLOIEMENT (à décommenter pour créer l'EXE)
+SHARED_DATA_BASE_PATH = "\\\\192.168.197.43\\Commun\\REMBOURSEMENT"
 
-USER_DATA_FILE = os.path.join(APP_DATA_DIR, "utilisateurs.json")
-RESET_CODES_FILE = os.path.join(APP_DATA_DIR, "codes_reset.json")
-REMBOURSEMENTS_JSON_FILE = os.path.join(APP_DATA_DIR, "remboursements.json")
+# MODE DÉVELOPPEMENT LOCAL (à commenter pour créer l'EXE)
+#SHARED_DATA_BASE_PATH = os.path.join(APP_ROOT_PATH, "donnees_partagees_mock")
 
-CONFIG_EMAIL_FILE = os.path.join(UNIVERSAL_APP_ROOT_PATH, "config", "config_email.ini")
+
+# Détermine automatiquement si l'application est en mode déploiement ou développement
+IS_DEPLOYMENT_MODE = not SHARED_DATA_BASE_PATH.startswith(APP_ROOT_PATH)
+# --- FIN DE LA CONFIGURATION DES CHEMINS ---
+
+
+# Sous-dossiers et fichiers de données, construits à partir du chemin de base
+APP_DATA_JSON_DIR = os.path.join(SHARED_DATA_BASE_PATH, "data_json")
+REMBOURSEMENT_FILES_DIR = os.path.join(SHARED_DATA_BASE_PATH, "Demande_Remboursement")
+
+USER_DATA_FILE = os.path.join(APP_DATA_JSON_DIR, "utilisateurs.json")
+RESET_CODES_FILE = os.path.join(APP_DATA_JSON_DIR, "codes_reset.json")
+REMBOURSEMENTS_JSON_FILE = os.path.join(APP_DATA_JSON_DIR, "remboursements.json")
+
+
+# --- Configuration Email (ne change pas) ---
+CONFIG_EMAIL_FILE = os.path.join(APP_ROOT_PATH, "config", "config_email.ini")
 SMTP_CONFIG = {}
 
-# --- Statuts des demandes de remboursement ---
+
+# --- Statuts des demandes de remboursement (ne change pas) ---
 STATUT_ANNULEE = "0. Demande Annulée"
 STATUT_CREEE = "1. Créée (en attente constat trop-perçu)"
 STATUT_REFUSEE_CONSTAT_TP = "1b. Refusée par Compta. Trésorerie (action P. Neri)"
@@ -33,7 +52,7 @@ STATUT_VALIDEE = "3. Validée (en attente de paiement)"
 STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO = "3b. Refusée - Validation (action M. Lupo)"
 STATUT_PAIEMENT_EFFECTUE = "4. Paiement effectué (Terminée)"
 
-# --- Rôles Utilisateurs et Descriptions Détaillées ---
+# --- Rôles Utilisateurs et Descriptions Détaillées (ne change pas) ---
 ROLES_UTILISATEURS = {
     "demandeur": {
         "description": "Responsable de l'initiation des demandes de remboursement pour les clients.\n"
@@ -42,7 +61,7 @@ ROLES_UTILISATEURS = {
                        "  - Joindre la facture du client (optionnel) et le RIB (obligatoire).\n"
                        "  - Rédiger une description initiale de la demande.\n"
                        "  - Annuler une demande qui lui a été retournée après un refus.",
-        "utilisateurs_actuels": [] # Sera peuplé dynamiquement
+        "utilisateurs_actuels": []
     },
     "comptable_tresorerie": {
         "description": "Chargé de vérifier le trop-perçu sur les comptes de l'hôpital.\n"
@@ -97,7 +116,6 @@ def load_smtp_config():
     global SMTP_CONFIG
     if not os.path.exists(CONFIG_EMAIL_FILE):
         print(f"ATTENTION: Le fichier de configuration email '{CONFIG_EMAIL_FILE}' est manquant.")
-        print("Veuillez créer ce fichier à partir de 'config_email_template.ini' et le remplir.")
         SMTP_CONFIG = None
         return
 
@@ -119,6 +137,31 @@ def load_smtp_config():
         print(f"ATTENTION: La section [SMTP] est manquante dans '{CONFIG_EMAIL_FILE}'.")
         SMTP_CONFIG = None
 
+def ensure_shared_dirs_exist():
+    """Crée les dossiers de données sur le chemin partagé s'ils n'existent pas."""
+    if not SHARED_DATA_BASE_PATH:
+        print("ERREUR: Le chemin de base des données partagées n'est pas configuré dans settings.py")
+        return
+
+    if not os.path.exists(SHARED_DATA_BASE_PATH):
+        # Ne tente de créer le dossier que s'il s'agit d'un chemin local pour le développement.
+        # Ne pas tenter de créer la racine d'un chemin réseau.
+        if IS_DEPLOYMENT_MODE:
+             # En mode déploiement, on suppose que le chemin racine existe déjà.
+             # La vérification de son existence se fera au lancement de app.py
+            return
+        else:
+             # En mode développement, on peut créer le dossier localement.
+            try:
+                os.makedirs(SHARED_DATA_BASE_PATH)
+                print(f"Dossier racine des données locales créé : '{SHARED_DATA_BASE_PATH}'")
+            except OSError as e:
+                print(f"Erreur critique lors de la création du dossier racine local '{SHARED_DATA_BASE_PATH}': {e}")
+                return
+
+    ensure_dir_exists(APP_DATA_JSON_DIR, "des fichiers JSON")
+    ensure_dir_exists(REMBOURSEMENT_FILES_DIR, "des dossiers de remboursement")
+
 def ensure_dir_exists(directory_path: str, dir_description: str):
     if not os.path.exists(directory_path):
         try:
@@ -127,9 +170,9 @@ def ensure_dir_exists(directory_path: str, dir_description: str):
         except OSError as e:
             print(f"Erreur critique lors de la création du dossier '{dir_description}' ('{directory_path}'): {e}")
 
+# Initialisation
 load_smtp_config()
-ensure_dir_exists(APP_DATA_DIR, "de données partagées mock")
-ensure_dir_exists(REMBOURSEMENT_BASE_DIR, "de base des remboursements")
+ensure_shared_dirs_exist()
 
 def ensure_data_dir_exists():
-     ensure_dir_exists(APP_DATA_DIR, "de données partagées mock")
+     ensure_shared_dirs_exist()
