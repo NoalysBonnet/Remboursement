@@ -1,3 +1,4 @@
+# controllers/remboursement_controller.py
 from models import remboursement_model
 from utils import pdf_utils
 from tkinter import filedialog
@@ -17,6 +18,12 @@ from config.settings import (
 class RemboursementController:
     def __init__(self, utilisateur_actuel: str):
         self.utilisateur_actuel = utilisateur_actuel
+
+    def archive_old_requests(self):
+        """Lance la tâche système d'archivage des anciennes demandes."""
+        count = remboursement_model.archiver_les_vieilles_demandes()
+        if count > 0:
+            print(f"{count} demande(s) ont été archivée(s).")
 
     def extraire_info_facture_pdf(self, chemin_pdf: str) -> dict:
         if not chemin_pdf or not os.path.exists(chemin_pdf):
@@ -91,8 +98,8 @@ class RemboursementController:
         )
         return chemin_fichier if chemin_fichier else None
 
-    def get_toutes_les_demandes_formatees(self) -> list[dict]:
-        demandes = remboursement_model.obtenir_toutes_les_demandes()
+    def get_toutes_les_demandes_formatees(self, include_archives: bool = False) -> list[dict]:
+        demandes = remboursement_model.obtenir_toutes_les_demandes(include_archives)
         demandes_formatees = []
         for demande_data in demandes:
             # Gestion pour 'chemins_factures_stockees' (qui est une liste)
@@ -100,10 +107,10 @@ class RemboursementController:
             chemins_factures_rel = demande_data.get("chemins_factures_stockees", [])
             if isinstance(chemins_factures_rel, list):
                 for rel_path in chemins_factures_rel:
-                    abs_path = remboursement_model.get_chemin_absolu_piece_jointe(rel_path)
+                    abs_path = remboursement_model.get_chemin_absolu_piece_jointe(rel_path, demande_data.get('is_archived', False))
                     if abs_path: abs_factures.append(abs_path)
-            elif isinstance(chemins_factures_rel, str):  # Rétrocompatibilité
-                abs_path = remboursement_model.get_chemin_absolu_piece_jointe(chemins_factures_rel)
+            elif isinstance(chemins_factures_rel, str):
+                abs_path = remboursement_model.get_chemin_absolu_piece_jointe(chemins_factures_rel, demande_data.get('is_archived', False))
                 if abs_path: abs_factures.append(abs_path)
             demande_data["chemins_abs_factures_stockees"] = abs_factures
 
@@ -112,29 +119,30 @@ class RemboursementController:
             chemins_rib_rel = demande_data.get("chemins_rib_stockes", [])
             if isinstance(chemins_rib_rel, list):
                 for rel_path in chemins_rib_rel:
-                    abs_path = remboursement_model.get_chemin_absolu_piece_jointe(rel_path)
+                    abs_path = remboursement_model.get_chemin_absolu_piece_jointe(rel_path, demande_data.get('is_archived', False))
                     if abs_path: abs_ribs.append(abs_path)
-            elif isinstance(chemins_rib_rel, str):  # Rétrocompatibilité
-                abs_path = remboursement_model.get_chemin_absolu_piece_jointe(chemins_rib_rel)
+            elif isinstance(chemins_rib_rel, str):
+                abs_path = remboursement_model.get_chemin_absolu_piece_jointe(chemins_rib_rel, demande_data.get('is_archived', False))
                 if abs_path: abs_ribs.append(abs_path)
             demande_data["chemins_abs_rib_stockes"] = abs_ribs
 
             demande_data["chemins_abs_trop_percu"] = []
             if demande_data.get("pieces_capture_trop_percu"):
                 for rel_path in demande_data["pieces_capture_trop_percu"]:
-                    abs_path = remboursement_model.get_chemin_absolu_piece_jointe(rel_path)
+                    abs_path = remboursement_model.get_chemin_absolu_piece_jointe(rel_path, demande_data.get('is_archived', False))
                     if abs_path:
                         demande_data["chemins_abs_trop_percu"].append(abs_path)
 
             demandes_formatees.append(demande_data)
-        return sorted(demandes_formatees, key=lambda d: d.get("date_creation", ""), reverse=True)
+        # Le tri se fait maintenant dans la vue
+        return demandes_formatees
 
     def telecharger_copie_piece_jointe(self, chemin_absolu_pj_source: str) -> tuple[bool, str]:
         if not chemin_absolu_pj_source or not os.path.exists(chemin_absolu_pj_source):
             return False, "Fichier source non trouvé ou chemin invalide."
 
         nom_fichier_original = os.path.basename(chemin_absolu_pj_source)
-        filetypes_save = (("Tous les fichiers", "*.*"),)  # Fallback
+        filetypes_save = (("Tous les fichiers", "*.*"),)
         if '.' in nom_fichier_original:
             ext = nom_fichier_original.rsplit('.', 1)[1]
             filetypes_save = ((f"Fichier .{ext.upper()}", f"*.{ext.lower()}"), ("Tous les fichiers", "*.*"))
@@ -157,7 +165,6 @@ class RemboursementController:
     def supprimer_demande(self, id_demande: str) -> tuple[bool, str]:
         return remboursement_model.supprimer_demande_par_id(id_demande)
 
-    # --- Actions de Workflow ---
     def mlupo_accepter_constat(
             self,
             id_demande: str,
@@ -169,14 +176,12 @@ class RemboursementController:
         if not commentaire.strip():
             return False, "Un commentaire est obligatoire pour cette action."
 
-        # 1. Ajouter d'abord la PJ
         succes_pj, msg_pj, _ = remboursement_model.ajouter_piece_jointe_trop_percu(
             id_demande, chemin_pj_trop_percu_source, self.utilisateur_actuel
         )
         if not succes_pj:
             return False, f"Erreur PJ: {msg_pj}"
 
-        # 2. Puis mettre à jour le statut et le commentaire
         succes_statut, msg_statut = remboursement_model.accepter_constat_trop_percu(
             id_demande, commentaire, self.utilisateur_actuel
         )

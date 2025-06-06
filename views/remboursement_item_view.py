@@ -114,12 +114,14 @@ class RemboursementItemView(ctk.CTkFrame):
         add_basic_info_row("Réf. Facture:", self.demande_data.get('reference_facture', 'N/A'))
         add_basic_info_row("Montant:", f"{self.demande_data.get('montant_demande', 0.0):.2f} €")
 
-        date_creation_iso = self.demande_data.get('date_creation', '')
+        # --- Logique de date corrigée pour 'date_creation' ---
+        date_creation_val = self.demande_data.get('date_creation')
         date_creation_formatee = "N/A"
-        if date_creation_iso:
+        if isinstance(date_creation_val, datetime.datetime):
+            date_creation_formatee = date_creation_val.strftime("%d/%m/%Y %H:%M")
+        elif isinstance(date_creation_val, str) and date_creation_val:
             try:
-                date_creation_obj = datetime.datetime.fromisoformat(
-                    date_creation_iso);
+                date_creation_obj = datetime.datetime.fromisoformat(date_creation_val)
                 date_creation_formatee = date_creation_obj.strftime("%d/%m/%Y %H:%M")
             except ValueError:
                 date_creation_formatee = "Date invalide"
@@ -128,14 +130,18 @@ class RemboursementItemView(ctk.CTkFrame):
         add_basic_info_row("Modifiée par:", self.demande_data.get('derniere_modification_par', 'N/A'))
         add_basic_info_row("Statut Actuel:", self.demande_data.get('statut', 'Non défini'))
 
-        date_paiement_iso = self.demande_data.get('date_paiement_effectue')
-        if date_paiement_iso:
+        # --- Logique de date corrigée pour 'date_paiement_effectue' ---
+        date_paiement_val = self.demande_data.get('date_paiement_effectue')
+        if date_paiement_val:
             date_paiement_formatee = "N/A"
-            try:
-                date_paiement_obj = datetime.datetime.fromisoformat(date_paiement_iso)
-                date_paiement_formatee = date_paiement_obj.strftime("%d/%m/%Y %H:%M")
-            except ValueError:
-                date_paiement_formatee = "Date invalide"
+            if isinstance(date_paiement_val, datetime.datetime):
+                date_paiement_formatee = date_paiement_val.strftime("%d/%m/%Y %H:%M")
+            elif isinstance(date_paiement_val, str):
+                try:
+                    date_paiement_obj = datetime.datetime.fromisoformat(date_paiement_val)
+                    date_paiement_formatee = date_paiement_obj.strftime("%d/%m/%Y %H:%M")
+                except ValueError:
+                    date_paiement_formatee = "Date invalide"
             add_basic_info_row("Paiement Effectué le:", date_paiement_formatee, text_color="lightgreen")
 
         historique_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
@@ -155,15 +161,18 @@ class RemboursementItemView(ctk.CTkFrame):
             hist_text_box.configure(state="normal")
             hist_text_box.delete("1.0", "end")
             for entree_hist in reversed(historique):
-                date_hist_iso = entree_hist.get('date', '')
+                # --- Logique de date corrigée pour les dates de l'historique ---
+                date_hist_val = entree_hist.get('date')
                 date_hist_formatee = "N/A"
-                if date_hist_iso:
+                if isinstance(date_hist_val, datetime.datetime):
+                    date_hist_formatee = date_hist_val.strftime("%d/%m/%Y %H:%M")
+                elif isinstance(date_hist_val, str) and date_hist_val:
                     try:
-                        date_hist_obj = datetime.datetime.fromisoformat(
-                            date_hist_iso);
+                        date_hist_obj = datetime.datetime.fromisoformat(date_hist_val)
                         date_hist_formatee = date_hist_obj.strftime("%d/%m/%Y %H:%M")
                     except ValueError:
                         date_hist_formatee = "Date invalide"
+
                 par_hist = entree_hist.get('par', 'Système')
                 statut_hist = entree_hist.get('statut', '')
                 commentaire_hist = entree_hist.get('commentaire', '').strip()
@@ -269,8 +278,9 @@ class RemboursementItemView(ctk.CTkFrame):
             has_workflow_buttons = True
 
         if (self._est_comptable_fournisseur() or self._est_admin()) and statut_actuel == STATUT_VALIDEE:
-            buttons_to_add.append(("Confirmer Paiement", lambda: self.callbacks['pdiop_confirmer_paiement'](id_demande),
-                                   "#006400", "#004d00"))
+            buttons_to_add.append(
+                ("Confirmer Paiement", lambda: self.callbacks['pdiop_confirmer_paiement'](id_demande), "#006400",
+                 "#004d00"))
             has_workflow_buttons = True
 
         if (self.current_user_name == self.demande_data.get(

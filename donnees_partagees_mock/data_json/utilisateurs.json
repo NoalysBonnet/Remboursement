@@ -4,7 +4,10 @@
         "email": "p.neri@noalys.com",
         "roles": [
             "demandeur"
-        ]
+        ],
+        "theme_color": "green",
+        "default_filter": "Toutes les demandes",
+        "profile_picture_path": null
     },
     "m.lupo": {
         "hashed_password": "$2b$12$VFpfWn7w0rplHZZdiKqTreCeBEY4Y2QQcNNJrfa1jyjXpNi29/cWa",

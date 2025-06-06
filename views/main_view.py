@@ -4,11 +4,14 @@ import customtkinter as ctk
 from tkinter import messagebox, simpledialog
 import datetime
 import traceback
+from PIL import Image, ImageDraw, ImageFont
+
 from config.settings import (
-    REMBOURSEMENTS_JSON_DIR, STATUT_CREEE,
+    REMBOURSEMENTS_JSON_DIR, REMBOURSEMENTS_ARCHIVE_JSON_DIR, STATUT_CREEE,
     STATUT_REFUSEE_CONSTAT_TP, STATUT_ANNULEE,
     STATUT_PAIEMENT_EFFECTUE, STATUT_TROP_PERCU_CONSTATE,
-    STATUT_VALIDEE, STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO
+    STATUT_VALIDEE, STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO,
+    PROFILE_PICTURES_DIR, REMBOURSEMENTS_BASE_DIR
 )
 from models import user_model
 from views.document_viewer import DocumentViewerWindow
@@ -16,6 +19,8 @@ from views.remboursement_item_view import RemboursementItemView
 from views.document_history_viewer import DocumentHistoryViewer
 from views.admin_user_management_view import AdminUserManagementView
 from views.help_view import HelpView
+from views.profile_view import ProfileView
+from utils.image_utils import create_circular_image
 
 POLLING_INTERVAL_MS = 5000
 
@@ -28,30 +33,35 @@ COULEUR_BORDURE_ANNULEE = "#9D0208"
 
 
 class MainView(ctk.CTkFrame):
-    def __init__(self, master, nom_utilisateur, on_logout_callback, remboursement_controller_factory,
-                 auth_controller_instance):
+    def __init__(self, master, nom_utilisateur, app_controller, remboursement_controller_factory):
         super().__init__(master, corner_radius=0, fg_color="transparent")
         self.master = master
         self.nom_utilisateur = nom_utilisateur
-        self.on_logout = on_logout_callback
+        self.app_controller = app_controller
+        self.auth_controller = app_controller.auth_controller
         self.remboursement_controller = remboursement_controller_factory(self.nom_utilisateur)
-        self.auth_controller = auth_controller_instance
 
         self.all_demandes_cache = []
         self._last_known_remboursements_mtime = 0
         self._polling_job_id = None
         self.user_roles = []
+        self.user_data = {}
         self.no_demandes_label_widget = None
 
+        self.current_filter = "Toutes les demandes"
+        self.current_sort = "Date de création (récent)"
+        self.include_archives = ctk.BooleanVar(value=False)
+
         try:
-            self._fetch_user_roles()
+            self._fetch_user_data()
+            self.current_filter = self.user_data.get("default_filter", "Toutes les demandes")
 
             self.pack(fill="both", expand=True)
             self.main_content_frame = ctk.CTkFrame(self, corner_radius=10)
             self.main_content_frame.pack(pady=20, padx=20, fill="both", expand=True)
 
             self.creer_widgets_barre_superieure_et_titre()
-            self.creer_section_actions_et_rafraichissement()
+            self.creer_section_actions_et_options()
             self._creer_barre_recherche()
             self.creer_conteneur_liste_demandes()
             self.creer_legende_couleurs()
@@ -65,12 +75,30 @@ class MainView(ctk.CTkFrame):
                          text=f"Erreur critique à l'initialisation:\n{e}\nConsultez la console.", font=("Arial", 16),
                          text_color="red").pack(expand=True, padx=20, pady=20)
 
-    def _fetch_user_roles(self):
-        user_info = user_model.obtenir_info_utilisateur(self.nom_utilisateur)
-        if user_info:
-            self.user_roles = user_info.get("roles", [])
+    def _is_active_for_user(self, demande: dict) -> bool:
+        current_status = demande.get("statut")
+        cree_par_user = demande.get("cree_par")
+
+        if self.est_comptable_tresorerie() and current_status == STATUT_CREEE:
+            return True
+        if (self.nom_utilisateur == cree_par_user or self.est_admin()) and current_status == STATUT_REFUSEE_CONSTAT_TP:
+            return True
+        if (self.est_validateur_chef() or self.est_admin()) and current_status == STATUT_TROP_PERCU_CONSTATE:
+            return True
+        if (
+                self.est_comptable_tresorerie() or self.est_admin()) and current_status == STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO:
+            return True
+        if (self.est_comptable_fournisseur() or self.est_admin()) and current_status == STATUT_VALIDEE:
+            return True
+        return False
+
+    def _fetch_user_data(self):
+        self.user_data = user_model.obtenir_info_utilisateur(self.nom_utilisateur)
+        if self.user_data:
+            self.user_roles = self.user_data.get("roles", [])
         else:
             self.user_roles = []
+            self.user_data = {}
 
     def est_admin(self) -> bool:
         return "admin" in self.user_roles
@@ -91,23 +119,55 @@ class MainView(ctk.CTkFrame):
         top_bar = ctk.CTkFrame(self.main_content_frame, fg_color="transparent")
         top_bar.pack(fill="x", padx=10, pady=(10, 5), anchor="n")
 
+        user_info_frame = ctk.CTkFrame(top_bar, fg_color="transparent")
+        user_info_frame.pack(side="left", padx=5, pady=2)
+
+        pfp_path = self.user_data.get("profile_picture_path")
+        pfp_image = None
+        if pfp_path:
+            full_pfp_path = os.path.join(PROFILE_PICTURES_DIR, pfp_path)
+            if os.path.exists(full_pfp_path):
+                pfp_image = create_circular_image(full_pfp_path, 30)
+
+        if not pfp_image:
+            pfp_size = 30
+            placeholder = Image.new('RGBA', (pfp_size, pfp_size), (80, 80, 80, 255))
+            draw = ImageDraw.Draw(placeholder)
+            try:
+                font = ImageFont.truetype("arial", 18)
+            except IOError:
+                font = ImageFont.load_default()
+            draw.text((pfp_size / 2, pfp_size / 2), self.nom_utilisateur[0].upper(), font=font, anchor="mm")
+            pfp_image = ctk.CTkImage(light_image=placeholder, dark_image=placeholder, size=(pfp_size, pfp_size))
+
+        pfp_label = ctk.CTkLabel(user_info_frame, text="", image=pfp_image, width=30, height=30)
+        pfp_label.pack(side="left")
+
         roles_str = f" (Rôles: {', '.join(self.user_roles)})" if self.user_roles else ""
-        label_accueil = ctk.CTkLabel(top_bar,
-                                     text=f"Utilisateur connecté : {self.nom_utilisateur}{roles_str}",
+        label_accueil = ctk.CTkLabel(user_info_frame,
+                                     text=f"{self.nom_utilisateur}{roles_str}",
                                      font=ctk.CTkFont(size=12))
-        label_accueil.pack(side="left", padx=5)
+        label_accueil.pack(side="left", padx=10)
 
-        bouton_aide = ctk.CTkButton(top_bar, text="Aide", command=self._ouvrir_fenetre_aide, width=70)
-        bouton_aide.pack(side="right", padx=(0, 5))
+        right_buttons_frame = ctk.CTkFrame(top_bar, fg_color="transparent")
+        right_buttons_frame.pack(side="right")
 
-        bouton_deconnexion = ctk.CTkButton(top_bar, text="Déconnexion", command=self.on_logout, width=120)
-        bouton_deconnexion.pack(side="right", padx=5)
+        bouton_profil = ctk.CTkButton(right_buttons_frame, text="Mon Profil", command=self._open_profile_view,
+                                      width=100, fg_color="gray")
+        bouton_profil.pack(side="left", padx=5)
+
+        bouton_aide = ctk.CTkButton(right_buttons_frame, text="Aide", command=self._ouvrir_fenetre_aide, width=70)
+        bouton_aide.pack(side="left", padx=5)
+
+        bouton_deconnexion = ctk.CTkButton(right_buttons_frame, text="Déconnexion",
+                                           command=self.app_controller.on_logout, width=120)
+        bouton_deconnexion.pack(side="left", padx=(5, 0))
 
         label_titre_principal = ctk.CTkLabel(self.main_content_frame, text="Tableau de Bord - Remboursements",
                                              font=ctk.CTkFont(size=24, weight="bold"))
         label_titre_principal.pack(pady=(10, 10), anchor="n")
 
-    def creer_section_actions_et_rafraichissement(self):
+    def creer_section_actions_et_options(self):
         actions_bar_frame = ctk.CTkFrame(self.main_content_frame, fg_color="transparent")
         actions_bar_frame.pack(pady=(0, 5), padx=10, fill="x", anchor="n")
 
@@ -116,8 +176,8 @@ class MainView(ctk.CTkFrame):
                                                     command=self._ouvrir_fenetre_creation_demande)
             bouton_nouvelle_demande.pack(side="left", pady=5, padx=(0, 10))
 
-        bouton_rafraichir = ctk.CTkButton(actions_bar_frame, text="Rafraîchir Liste",
-                                          command=lambda: self.afficher_liste_demandes(force_reload=True), width=150)
+        bouton_rafraichir = ctk.CTkButton(actions_bar_frame, text="Rafraîchir",
+                                          command=lambda: self.afficher_liste_demandes(force_reload=True), width=120)
         bouton_rafraichir.pack(side="left", pady=5, padx=10)
 
         if self.est_admin():
@@ -125,6 +185,42 @@ class MainView(ctk.CTkFrame):
                                             command=self._ouvrir_fenetre_gestion_utilisateurs,
                                             fg_color="#555555", hover_color="#444444")
             btn_admin_users.pack(side="left", pady=5, padx=10)
+
+        options_frame = ctk.CTkFrame(actions_bar_frame, fg_color="transparent")
+        options_frame.pack(side="right", pady=5)
+
+        ctk.CTkLabel(options_frame, text="Trier par:").pack(side="left", padx=(10, 5))
+        sort_options = ["Date de création (récent)", "Date de création (ancien)", "Montant (décroissant)",
+                        "Montant (croissant)", "Nom du patient (A-Z)"]
+        self.sort_menu = ctk.CTkOptionMenu(options_frame, values=sort_options, command=self._set_sort, width=180)
+        self.sort_menu.set(self.current_sort)
+        self.sort_menu.pack(side="left", padx=(0, 10))
+
+        ctk.CTkLabel(options_frame, text="Filtrer par:").pack(side="left", padx=(10, 5))
+        filter_options = ["Toutes les demandes", "En attente de mon action", "En cours", "Terminées et annulées"]
+        self.filter_menu = ctk.CTkOptionMenu(options_frame, values=filter_options, command=self._set_filter, width=180)
+        self.filter_menu.set(self.current_filter)
+        self.filter_menu.pack(side="left")
+
+    def _set_filter(self, choice: str):
+        self.current_filter = choice
+        self.afficher_liste_demandes(force_reload=False)
+
+    def _set_sort(self, choice: str):
+        self.current_sort = choice
+        self.afficher_liste_demandes(force_reload=False)
+
+    def _on_archive_toggle(self):
+        self.afficher_liste_demandes(force_reload=True)
+
+    def _open_profile_view(self):
+        self._fetch_user_data()
+        if self.user_data:
+            ProfileView(self, self.nom_utilisateur, self.auth_controller, self.user_data,
+                        on_save_callback=self._on_profile_saved)
+
+    def _on_profile_saved(self):
+        self.app_controller.request_restart("Votre profil a été mis à jour.")
 
     def _ouvrir_fenetre_gestion_utilisateurs(self):
         if self.auth_controller:
@@ -136,26 +232,27 @@ class MainView(ctk.CTkFrame):
         HelpView(self, self.nom_utilisateur, self.user_roles)
 
     def _creer_barre_recherche(self):
-        search_bar_frame = ctk.CTkFrame(self.main_content_frame, fg_color="transparent")
-        search_bar_frame.pack(fill="x", padx=10, pady=(5, 5))
+        search_frame_parent = ctk.CTkFrame(self.main_content_frame, fg_color="transparent")
+        search_frame_parent.pack(fill="x", padx=10, pady=(5, 5))
 
-        search_label = ctk.CTkLabel(search_bar_frame, text="Rechercher (Nom, Prénom, Réf.):",
+        search_label = ctk.CTkLabel(search_frame_parent, text="Rechercher (Nom, Prénom, Réf.):",
                                     font=ctk.CTkFont(size=12))
         search_label.pack(side="left", padx=(0, 5))
 
         self.search_var = ctk.StringVar()
-        self.search_var.trace_add("write", self._on_search_change)
-        self.search_entry = ctk.CTkEntry(search_bar_frame, textvariable=self.search_var, width=300)
+        self.search_var.trace_add("write", lambda name, index, mode: self.afficher_liste_demandes())
+        self.search_entry = ctk.CTkEntry(search_frame_parent, textvariable=self.search_var, width=300)
         self.search_entry.pack(side="left", padx=(0, 5), fill="x", expand=True)
 
-        clear_button = ctk.CTkButton(search_bar_frame, text="X", width=30, command=self._clear_search)
+        clear_button = ctk.CTkButton(search_frame_parent, text="X", width=30, command=self._clear_search)
         clear_button.pack(side="left", padx=(5, 0))
+
+        archive_checkbox = ctk.CTkCheckBox(search_frame_parent, text="Inclure les archives",
+                                           variable=self.include_archives, command=self._on_archive_toggle)
+        archive_checkbox.pack(side="left", padx=20)
 
     def _clear_search(self, event=None):
         self.search_var.set("")
-
-    def _on_search_change(self, *args):
-        self.afficher_liste_demandes(force_reload=False)
 
     def creer_conteneur_liste_demandes(self):
         self.scrollable_frame_demandes = ctk.CTkScrollableFrame(self.main_content_frame,
@@ -183,8 +280,8 @@ class MainView(ctk.CTkFrame):
     def _check_for_data_updates(self):
         try:
             current_mtime = 0
-            if os.path.exists(REMBOURSEMENTS_JSON_DIR):
-                current_mtime = os.path.getmtime(REMBOURSEMENTS_JSON_DIR)
+            if os.path.exists(REMBOURSEMENTS_BASE_DIR):
+                current_mtime = os.path.getmtime(REMBOURSEMENTS_BASE_DIR)
 
             if current_mtime != self._last_known_remboursements_mtime:
                 print(f"{datetime.datetime.now()}: Détection de modifications externes, rafraîchissement forcé...")
@@ -215,34 +312,57 @@ class MainView(ctk.CTkFrame):
                                          font=ctk.CTkFont(size=16))
             loading_label.pack(pady=20)
             self.update_idletasks()
-
-            self._fetch_user_roles()
-            self.all_demandes_cache = self.remboursement_controller.get_toutes_les_demandes_formatees()
-            if os.path.exists(REMBOURSEMENTS_JSON_DIR):
-                self._last_known_remboursements_mtime = os.path.getmtime(REMBOURSEMENTS_JSON_DIR)
-
+            self._fetch_user_data()
+            self.all_demandes_cache = self.remboursement_controller.get_toutes_les_demandes_formatees(
+                self.include_archives.get())
+            if os.path.exists(REMBOURSEMENTS_BASE_DIR):
+                self._last_known_remboursements_mtime = os.path.getmtime(REMBOURSEMENTS_BASE_DIR)
             loading_label.destroy()
 
-        terme_recherche = self.search_var.get().lower().strip() if hasattr(self, 'search_var') else ""
-        demandes_a_afficher_data = []
+        terme_recherche = self.search_var.get().lower().strip()
+        demandes_filtrees = self.all_demandes_cache
 
-        if not terme_recherche:
-            demandes_a_afficher_data = self.all_demandes_cache
-        else:
-            for d_data in self.all_demandes_cache:
-                if (terme_recherche in d_data.get('nom', '').lower() or
-                        terme_recherche in d_data.get('prenom', '').lower() or
-                        terme_recherche in d_data.get('reference_facture', '').lower()):
-                    demandes_a_afficher_data.append(d_data)
+        if terme_recherche:
+            demandes_filtrees = [
+                d for d in demandes_filtrees if
+                terme_recherche in d.get('nom', '').lower() or
+                terme_recherche in d.get('prenom', '').lower() or
+                terme_recherche in str(d.get('reference_facture', '')).lower()
+            ]
+
+        if self.current_filter == "En attente de mon action":
+            demandes_filtrees = [d for d in demandes_filtrees if self._is_active_for_user(d)]
+        elif self.current_filter == "En cours":
+            demandes_filtrees = [d for d in demandes_filtrees if
+                                 d.get('statut') not in [STATUT_PAIEMENT_EFFECTUE, STATUT_ANNULEE]]
+        elif self.current_filter == "Terminées et annulées":
+            demandes_filtrees = [d for d in demandes_filtrees if
+                                 d.get('statut') in [STATUT_PAIEMENT_EFFECTUE, STATUT_ANNULEE]]
+
+        reverse_sort = self.current_sort in ["Date de création (récent)", "Montant (décroissant)"]
+
+        def get_sort_key(demande):
+            sort_field = {
+                "Date de création (récent)": "date_creation",
+                "Date de création (ancien)": "date_creation",
+                "Montant (croissant)": "montant_demande",
+                "Montant (décroissant)": "montant_demande",
+                "Nom du patient (A-Z)": "nom"
+            }.get(self.current_sort, "date_creation")
+
+            value = demande.get(sort_field)
+            if value is None:
+                return datetime.datetime.min if isinstance(demande.get("date_creation"), datetime.datetime) else ""
+            return value
+
+        demandes_a_afficher_data = sorted(demandes_filtrees, key=get_sort_key, reverse=reverse_sort)
 
         if self.no_demandes_label_widget:
             self.no_demandes_label_widget.destroy()
             self.no_demandes_label_widget = None
 
         if not demandes_a_afficher_data:
-            message_texte = "Aucune demande de remboursement à afficher."
-            if terme_recherche:
-                message_texte = f"Aucune demande ne correspond à '{terme_recherche}'."
+            message_texte = "Aucune demande de remboursement ne correspond à vos critères."
             self.no_demandes_label_widget = ctk.CTkLabel(self.scrollable_frame_demandes,
                                                          text=message_texte,
                                                          font=ctk.CTkFont(size=14))
@@ -274,14 +394,9 @@ class MainView(ctk.CTkFrame):
 
     def _action_voir_historique_docs(self, demande_data: dict):
         if not demande_data:
-            messagebox.showwarning("Avertissement", "Données de la demande non disponibles pour voir l'historique.",
-                                   parent=self)
+            messagebox.showwarning("Avertissement", "Données de la demande non disponibles.", parent=self)
             return
-
-        callbacks_historique = {
-            'voir_pj': self._action_voir_pj,
-            'dl_pj': self._action_telecharger_pj
-        }
+        callbacks_historique = {'voir_pj': self._action_voir_pj, 'dl_pj': self._action_telecharger_pj}
         DocumentHistoryViewer(self, demande_data=demande_data, callbacks=callbacks_historique)
 
     def _action_mlupo_accepter(self, id_demande: str):
@@ -551,8 +666,7 @@ class MainView(ctk.CTkFrame):
 
     def _action_voir_pj(self, chemin_pj):
         if not chemin_pj:
-            messagebox.showwarning("Avertissement", "Aucun chemin de fichier spécifié pour la visualisation.",
-                                   parent=self)
+            messagebox.showwarning("Avertissement", "Aucun chemin de fichier spécifié.", parent=self)
             return
         if not os.path.exists(chemin_pj):
             messagebox.showerror("Erreur", f"Fichier non trouvé : {chemin_pj}", parent=self)
@@ -563,8 +677,7 @@ class MainView(ctk.CTkFrame):
 
     def _action_telecharger_pj(self, chemin_pj):
         if not chemin_pj:
-            messagebox.showwarning("Avertissement", "Aucun chemin de fichier source spécifié pour le téléchargement.",
-                                   parent=self)
+            messagebox.showwarning("Avertissement", "Aucun chemin de fichier source spécifié.", parent=self)
             return
         succes, message = self.remboursement_controller.telecharger_copie_piece_jointe(chemin_pj)
         if succes:

@@ -5,12 +5,35 @@ import uuid
 import shutil
 from . import remboursement_data
 from . import remboursement_workflow
-from config.settings import REMBOURSEMENTS_ATTACHMENTS_DIR, STATUT_CREEE
+from config.settings import REMBOURSEMENTS_ATTACHMENTS_DIR, REMBOURSEMENTS_ARCHIVE_ATTACHMENTS_DIR, STATUT_CREEE, \
+    STATUT_PAIEMENT_EFFECTUE, STATUT_ANNULEE
 
 
-obtenir_toutes_les_demandes = remboursement_data.charger_toutes_les_demandes_data
+def obtenir_toutes_les_demandes(include_archives: bool = False):
+    return remboursement_data.charger_toutes_les_demandes_data(include_archives)
+
+
+def archiver_les_vieilles_demandes() -> int:
+    """Parcourt les demandes et archive celles qui sont terminées depuis plus d'un an."""
+    count = 0
+    douze_mois = datetime.timedelta(days=365)
+    now = datetime.datetime.now()
+
+    demandes_actives = remboursement_data.charger_toutes_les_demandes_data(include_archives=False)
+
+    for demande in demandes_actives:
+        statut = demande.get("statut")
+        if statut in [STATUT_PAIEMENT_EFFECTUE, STATUT_ANNULEE]:
+            date_modif = demande.get("date_derniere_modification")
+            if date_modif and isinstance(date_modif, datetime.datetime):
+                if (now - date_modif) > douze_mois:
+                    print(f"Archivage de la demande {demande['id_demande']}...")
+                    if remboursement_data.archiver_demande_par_id(demande['id_demande']):
+                        count += 1
+    return count
+
+
 supprimer_demande_par_id = remboursement_data.supprimer_demande_par_id_data
-
 ajouter_piece_jointe_trop_percu = remboursement_workflow.ajouter_piece_jointe_trop_percu_action
 accepter_constat_trop_percu = remboursement_workflow.accepter_constat_trop_percu_action
 refuser_constat_trop_percu = remboursement_workflow.refuser_constat_trop_percu_action
@@ -71,6 +94,7 @@ def creer_nouvelle_demande(
                 pass
         return None
 
+    now = datetime.datetime.now()
     nouvelle_demande_dict = {
         "id_demande": id_unique_demande,
         "nom": nom.upper() if nom else None,
@@ -83,12 +107,12 @@ def creer_nouvelle_demande(
         "chemins_rib_stockes": chemins_rib_stockes,
         "statut": STATUT_CREEE,
         "cree_par": utilisateur_createur,
-        "date_creation": datetime.datetime.now().isoformat(),
+        "date_creation": now,
         "derniere_modification_par": utilisateur_createur,
-        "date_derniere_modification": datetime.datetime.now().isoformat(),
+        "date_derniere_modification": now,
         "historique_statuts": [{
             "statut": STATUT_CREEE,
-            "date": datetime.datetime.now().isoformat(),
+            "date": now,
             "par": utilisateur_createur,
             "commentaire": description
         }],
@@ -100,8 +124,10 @@ def creer_nouvelle_demande(
     return remboursement_data.creer_demande_data(nouvelle_demande_dict)
 
 
-def get_chemin_absolu_piece_jointe(chemin_relatif_pj: str | None) -> str | None:
+def get_chemin_absolu_piece_jointe(chemin_relatif_pj: str | None, is_archived: bool = False) -> str | None:
     """Construit le chemin absolu vers une pièce jointe à partir de son chemin relatif."""
     if not chemin_relatif_pj:
         return None
-    return os.path.join(REMBOURSEMENTS_ATTACHMENTS_DIR, chemin_relatif_pj)
+
+    base_dir = REMBOURSEMENTS_ARCHIVE_ATTACHMENTS_DIR if is_archived else REMBOURSEMENTS_ATTACHMENTS_DIR
+    return os.path.join(base_dir, chemin_relatif_pj)

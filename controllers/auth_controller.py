@@ -1,6 +1,10 @@
+# controllers/auth_controller.py
+import smtplib
+import ssl
 from models import user_model
-from utils import email_utils, password_utils
-from config.settings import ROLES_UTILISATEURS, ASSIGNABLE_ROLES
+from utils import password_utils
+from config.settings import ROLES_UTILISATEURS, ASSIGNABLE_ROLES, save_email_config_to_ini, SMTP_CONFIG, \
+    load_smtp_config
 
 
 class AuthController:
@@ -29,6 +33,7 @@ class AuthController:
         if not code_reset:
             return False, email_destinataire, "Erreur lors de la génération du code."
 
+        from utils import email_utils  # Import local pour éviter dépendance circulaire
         if email_utils.envoyer_email_reset(email_destinataire, nom_utilisateur, code_reset):
             return True, email_destinataire, None
         else:
@@ -45,98 +50,127 @@ class AuthController:
         else:
             return False, "Code de réinitialisation invalide ou expiré."
 
-    def get_all_users_for_management(self) -> list[dict]:  #
-        """Récupère tous les utilisateurs avec leurs détails pour la gestion (sauf l'admin 'admin')."""
-        tous_utilisateurs_data = user_model.obtenir_tous_les_utilisateurs()  # Renommé pour clarté
-        liste_utilisateurs = []  #
-        for username, data in tous_utilisateurs_data.items():  # Utilisation de la variable correcte
-            if username != "admin":  #
-                user_info = {  #
-                    "login": username,  #
-                    "email": data.get("email", "N/A"),  #
-                    "roles": data.get("roles", [])  #
+    def get_user_data(self, login: str) -> dict | None:
+        return user_model.obtenir_info_utilisateur(login)
+
+    def update_user_profile(self, login: str, new_email: str, old_password: str | None, new_password: str | None,
+                            preferences: dict) -> tuple[bool, str]:
+        user = user_model.obtenir_info_utilisateur(login)
+        if not user:
+            return False, "Utilisateur non trouvé."
+
+        if new_password:
+            if not old_password or not password_utils.verifier_mdp(old_password, user.get("hashed_password")):
+                return False, "L'ancien mot de passe est incorrect."
+
+        return user_model.mettre_a_jour_utilisateur_db(
+            login_original=login,
+            nouveau_login=login,  # Le login n'est pas modifiable depuis le profil
+            nouvel_email=new_email,
+            nouveaux_roles=user.get('roles', []),  # Les roles ne sont pas modifiables ici
+            nouveau_mot_de_passe=new_password,
+            preferences=preferences
+        )
+
+    def get_all_users_for_management(self) -> list[dict]:
+        tous_utilisateurs_data = user_model.obtenir_tous_les_utilisateurs()
+        liste_utilisateurs = []
+        for username, data in tous_utilisateurs_data.items():
+            if username != "admin":
+                user_info = {
+                    "login": username,
+                    "email": data.get("email", "N/A"),
+                    "roles": data.get("roles", [])
                 }
-                liste_utilisateurs.append(user_info)  #
-        return sorted(liste_utilisateurs, key=lambda u: u["login"])  #
+                liste_utilisateurs.append(user_info)
+        return sorted(liste_utilisateurs, key=lambda u: u["login"])
 
-    def admin_delete_user(self, nom_utilisateur_a_supprimer: str) -> tuple[bool, str]:  #
-        """Supprime un utilisateur (appelé par l'admin)."""
-        if nom_utilisateur_a_supprimer == "admin":  #
-            return False, "Le compte administrateur principal 'admin' ne peut pas être supprimé."  #
+    def admin_delete_user(self, nom_utilisateur_a_supprimer: str) -> tuple[bool, str]:
+        if nom_utilisateur_a_supprimer == "admin":
+            return False, "Le compte administrateur principal 'admin' ne peut pas être supprimé."
 
-        succes = user_model.supprimer_utilisateur_db(nom_utilisateur_a_supprimer)  #
-        if succes:  #
-            return True, f"L'utilisateur '{nom_utilisateur_a_supprimer}' a été supprimé avec succès."  #
-        else:  #
-            return False, f"Impossible de supprimer l'utilisateur '{nom_utilisateur_a_supprimer}' (peut-être non trouvé ou une erreur s'est produite)."  #
+        succes = user_model.supprimer_utilisateur_db(nom_utilisateur_a_supprimer)
+        if succes:
+            return True, f"L'utilisateur '{nom_utilisateur_a_supprimer}' a été supprimé avec succès."
+        else:
+            return False, f"Impossible de supprimer l'utilisateur '{nom_utilisateur_a_supprimer}'."
 
-    def admin_create_user(self, login: str, email: str, mot_de_passe: str, roles: list[str]) -> tuple[bool, str]:  #
-        if not all([login, email, mot_de_passe]):  #
-            return False, "Login, email et mot de passe sont requis."  #
-        if not login.strip() or not email.strip() or not mot_de_passe.strip():  #
-            return False, "Login, email et mot de passe ne peuvent pas être vides."  #
-        if login == "admin":  #
-            return False, "Le login 'admin' est réservé et ne peut pas être créé."  #
-        if user_model.utilisateur_existant(login):  #
-            return False, f"Le login '{login}' existe déjà."  #
+    def admin_create_user(self, login: str, email: str, mot_de_passe: str, roles: list[str]) -> tuple[bool, str]:
+        if not all([login, email, mot_de_passe]):
+            return False, "Login, email et mot de passe sont requis."
+        if not login.strip() or not email.strip() or not mot_de_passe.strip():
+            return False, "Login, email et mot de passe ne peuvent pas être vides."
+        if login == "admin":
+            return False, "Le login 'admin' est réservé."
+        if user_model.utilisateur_existant(login):
+            return False, f"Le login '{login}' existe déjà."
 
-        valid_roles = sorted(list(set(role for role in roles if role in ASSIGNABLE_ROLES)))  #
+        valid_roles = sorted(list(set(role for role in roles if role in ASSIGNABLE_ROLES)))
 
-        if user_model.ajouter_utilisateur_db(login, mot_de_passe, email, valid_roles):  #
-            return True, f"Utilisateur '{login}' créé avec succès."  #
-        else:  #
-            return False, f"Erreur lors de la création de l'utilisateur '{login}'."  #
+        if user_model.ajouter_utilisateur_db(login, mot_de_passe, email, valid_roles):
+            return True, f"Utilisateur '{login}' créé avec succès."
+        else:
+            return False, f"Erreur lors de la création de l'utilisateur '{login}'."
 
     def admin_update_user_details(self, login_original: str, nouveau_login: str, new_email: str, new_roles: list[str],
-                                  nouveau_mot_de_passe: str | None) -> tuple[bool, str]:  #
-        if not all([login_original, nouveau_login, new_email]):  #
-            return False, "Le login original, le nouveau login et le nouvel email sont requis."  #
-        if not nouveau_login.strip() or not new_email.strip():  #
-            return False, "Le nouveau login et le nouvel email ne peuvent pas être vides."  #
+                                  nouveau_mot_de_passe: str | None) -> tuple[bool, str]:
+        if not all([login_original, nouveau_login, new_email]):
+            return False, "Login, nouveau login et email sont requis."
+        if not nouveau_login.strip() or not new_email.strip():
+            return False, "Le nouveau login et le nouvel email ne peuvent pas être vides."
 
-        if login_original == "admin" and nouveau_login != "admin":  #
-            return False, "Le login du compte administrateur principal 'admin' ne peut pas être modifié."  #
-        if login_original == "admin" and "admin" not in new_roles:  # # Assurer que l'admin garde son rôle "admin"
-            new_roles.append("admin")  #
-        if nouveau_login == "admin" and login_original != "admin":  #
-            return False, "Le login 'admin' est réservé."  #
+        if login_original == "admin" and nouveau_login != "admin":
+            return False, "Le login de l'admin principal 'admin' ne peut pas être modifié."
+        if login_original == "admin" and "admin" not in new_roles:
+            new_roles.append("admin")
+        if nouveau_login == "admin" and login_original != "admin":
+            return False, "Le login 'admin' est réservé."
 
-        if nouveau_login != "admin":  #
-            valid_roles = [role for role in new_roles if role in ASSIGNABLE_ROLES]  #
-        else:  #
-            valid_roles = ["admin"] + [role for role in new_roles if role in ASSIGNABLE_ROLES and role != "admin"]  #
-        valid_roles = sorted(list(set(valid_roles)))  #
+        valid_roles = sorted(list(set(role for role in new_roles if role in ASSIGNABLE_ROLES or role == "admin")))
 
         return user_model.mettre_a_jour_utilisateur_db(login_original, nouveau_login, new_email, valid_roles,
-                                                       nouveau_mot_de_passe)  #
+                                                       nouveau_mot_de_passe)
 
-    def get_role_descriptions_with_users(self) -> dict:  #
-        """Récupère les descriptions des rôles et y ajoute les utilisateurs actuels pour chaque rôle."""
-        descriptions = ROLES_UTILISATEURS.copy()  #
-        # CRUCIAL: Définir la variable ici
+    def get_role_descriptions_with_users(self) -> dict:
+        descriptions = ROLES_UTILISATEURS.copy()
         tous_utilisateurs_data = user_model.obtenir_tous_les_utilisateurs()
 
-        for role_key in descriptions:  #
-            # S'assurer que la clé pour les utilisateurs actuels existe et est une liste
-            if "utilisateurs_actuels" not in descriptions[role_key] or not isinstance(
-                    descriptions[role_key]["utilisateurs_actuels"], list):
-                descriptions[role_key]["utilisateurs_actuels"] = []
-            else:  # Vider pour recalculer
-                descriptions[role_key]["utilisateurs_actuels"] = []
+        for role_key in descriptions:
+            descriptions[role_key]["utilisateurs_actuels"] = []
 
-        # CORRECTION: Utiliser la variable correctement définie
-        for username, data in tous_utilisateurs_data.items():  #
-            user_actual_roles = data.get("roles", [])  #
-            for role in user_actual_roles:  #
-                if role in descriptions:  #
-                    descriptions[role]["utilisateurs_actuels"].append(username)  #
-                # Le rôle 'admin' est déjà une clé dans ROLES_UTILISATEURS, donc pas besoin de elif spécial ici si 'admin' est dans ASSIGNABLE_ROLES ou géré via ROLES_UTILISATEURS
+        for username, data in tous_utilisateurs_data.items():
+            user_actual_roles = data.get("roles", [])
+            for role in user_actual_roles:
+                if role in descriptions:
+                    descriptions[role]["utilisateurs_actuels"].append(username)
 
-        for role_key in descriptions:  #
+        for role_key in descriptions:
             descriptions[role_key]["utilisateurs_actuels"] = sorted(
-                list(set(descriptions[role_key]["utilisateurs_actuels"])))  #
+                list(set(descriptions[role_key]["utilisateurs_actuels"])))
 
-        return descriptions  #
+        return descriptions
 
-    def get_assignable_roles(self) -> list[str]:  #
-        return ASSIGNABLE_ROLES  #
+    def get_assignable_roles(self) -> list[str]:
+        return ASSIGNABLE_ROLES
+
+    def get_smtp_config(self) -> dict:
+        load_smtp_config()
+        return SMTP_CONFIG.copy()
+
+    def save_smtp_config(self, new_config_data: dict) -> tuple[bool, str]:
+        return save_email_config_to_ini(new_config_data)
+
+    def test_smtp_connection(self, config_to_test: dict) -> tuple[bool, str]:
+        try:
+            if config_to_test.get('use_ssl'):
+                server = smtplib.SMTP_SSL(config_to_test['server'], config_to_test['port'], timeout=10)
+            else:
+                server = smtplib.SMTP(config_to_test['server'], config_to_test['port'], timeout=10)
+                if config_to_test.get('use_tls'):
+                    server.starttls()
+
+            server.login(config_to_test['email_sender'], config_to_test['password'])
+            server.quit()
+            return True, "Connexion réussie."
+        except Exception as e:
+            return False, str(e)

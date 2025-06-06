@@ -1,7 +1,8 @@
 # views/admin_user_management_view.py
 import customtkinter as ctk
-from tkinter import messagebox, simpledialog  # simpledialog peut être utilisé pour le nouveau mot de passe
-from config.settings import ASSIGNABLE_ROLES  # Importer les rôles assignables
+from tkinter import messagebox, simpledialog
+from config.settings import ASSIGNABLE_ROLES
+from .admin_config_view import AdminConfigView
 
 
 class AdminUserManagementView(ctk.CTkToplevel):
@@ -10,7 +11,7 @@ class AdminUserManagementView(ctk.CTkToplevel):
         self.auth_controller = auth_controller
 
         self.title("Gestion des Utilisateurs (Admin)")
-        self.geometry("850x600")  # Un peu plus large pour login, email, roles, boutons
+        self.geometry("850x600")
         self.transient(master)
         self.grab_set()
         self.resizable(True, True)
@@ -30,7 +31,11 @@ class AdminUserManagementView(ctk.CTkToplevel):
                                             command=self._show_role_descriptions)
         btn_show_roles_info.pack(side="left", padx=5)
 
-        # Bouton Créer Utilisateur (sa logique ouvrira une autre fenêtre de dialogue)
+        btn_config_smtp = ctk.CTkButton(action_bar_frame, text="Configurer E-mail (SMTP)",
+                                        command=self._open_smtp_config_dialog,
+                                        fg_color="#334155", hover_color="#475569")
+        btn_config_smtp.pack(side="left", padx=5)
+
         btn_create_user = ctk.CTkButton(action_bar_frame, text="Créer un Utilisateur",
                                         command=self._open_create_user_dialog)
         btn_create_user.pack(side="left", padx=5)
@@ -43,6 +48,9 @@ class AdminUserManagementView(ctk.CTkToplevel):
 
         close_button = ctk.CTkButton(main_frame, text="Fermer", command=self.destroy, width=100)
         close_button.pack(pady=10)
+
+    def _open_smtp_config_dialog(self):
+        AdminConfigView(self, self.auth_controller)
 
     def populate_user_list(self):
         for widget in self.scrollable_frame.winfo_children():
@@ -61,7 +69,7 @@ class AdminUserManagementView(ctk.CTkToplevel):
             user_roles_str = ", ".join(user_roles_list) if user_roles_list else "Aucun rôle assigné"
 
             item_frame = ctk.CTkFrame(self.scrollable_frame, corner_radius=3)
-            item_frame.pack(fill="x", pady=(2, 2), padx=4)  # pady réduit
+            item_frame.pack(fill="x", pady=(2, 2), padx=4)
 
             item_frame.columnconfigure(0, weight=2)
             item_frame.columnconfigure(1, weight=2)
@@ -134,7 +142,7 @@ class AdminUserManagementView(ctk.CTkToplevel):
 
         dialog = ctk.CTkToplevel(self)
         dialog.title(title)
-        dialog.geometry("550x550")  # Ajuster la taille
+        dialog.geometry("550x550")
         dialog.transient(self)
         dialog.grab_set()
 
@@ -146,7 +154,6 @@ class AdminUserManagementView(ctk.CTkToplevel):
         login_entry.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
         if mode == "modify":
             login_entry.insert(0, login_original)
-            # login_entry.configure(state="readonly") # Login non modifiable pour l'instant
 
         ctk.CTkLabel(form_frame, text="Email:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
         email_entry = ctk.CTkEntry(form_frame, width=250)
@@ -165,7 +172,7 @@ class AdminUserManagementView(ctk.CTkToplevel):
         roles_scroll_frame.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
 
         role_vars = {}
-        assignable_roles_list = self.auth_controller.get_assignable_roles()  # Utiliser la méthode du contrôleur
+        assignable_roles_list = self.auth_controller.get_assignable_roles()
         for role_name in assignable_roles_list:
             var = ctk.StringVar(value="on" if role_name in roles_actuels else "off")
             cb = ctk.CTkCheckBox(roles_scroll_frame, text=role_name, variable=var, onvalue="on", offvalue="off")
@@ -179,13 +186,13 @@ class AdminUserManagementView(ctk.CTkToplevel):
             selected_roles = [role for role, var in role_vars.items() if var.get() == "on"]
 
             if mode == "create":
-                if not password_val:  # Mot de passe requis pour la création
+                if not password_val:
                     messagebox.showerror("Erreur", "Le mot de passe est requis pour créer un utilisateur.",
                                          parent=dialog)
                     return
                 succes, message = self.auth_controller.admin_create_user(login_val, email_val, password_val,
                                                                          selected_roles)
-            else:  # mode == "modify"
+            else:
                 succes, message = self.auth_controller.admin_update_user_details(login_original, login_val, email_val,
                                                                                  selected_roles,
                                                                                  password_val if password_val else None)
@@ -208,7 +215,7 @@ class AdminUserManagementView(ctk.CTkToplevel):
 
         desc_window = ctk.CTkToplevel(self)
         desc_window.title("Description des Rôles et Utilisateurs Associés")
-        desc_window.geometry("750x550")  # Agrandir un peu pour les listes d'utilisateurs
+        desc_window.geometry("750x550")
         desc_window.transient(self)
         desc_window.grab_set()
 
@@ -224,7 +231,7 @@ class AdminUserManagementView(ctk.CTkToplevel):
 
             desc_textbox = ctk.CTkTextbox(scroll_frame, wrap="word", height=(desc.count('\n') + 2) * 18,
                                           activate_scrollbars=False, border_width=0,
-                                          fg_color="transparent")  # Ajuster la hauteur
+                                          fg_color="transparent")
             desc_textbox.insert("1.0", desc)
             desc_textbox.configure(state="disabled")
             desc_textbox.pack(anchor="w", fill="x", padx=10, pady=(0, 5))

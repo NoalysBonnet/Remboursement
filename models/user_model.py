@@ -7,6 +7,7 @@ from utils.password_utils import generer_hachage_mdp, verifier_mdp
 from config.settings import USER_DATA_FILE, RESET_CODES_FILE, ASSIGNABLE_ROLES
 from utils.data_manager import read_modify_write_json, load_json_data
 
+
 def obtenir_tous_les_utilisateurs() -> dict:
     return load_json_data(USER_DATA_FILE)
 
@@ -41,7 +42,8 @@ def mettre_a_jour_utilisateur_db(
         nouveau_login: str,
         nouvel_email: str,
         nouveaux_roles: list[str],
-        nouveau_mot_de_passe: str | None = None
+        nouveau_mot_de_passe: str | None = None,
+        preferences: dict | None = None
 ) -> tuple[bool, str]:
     result = {"success": False, "message": ""}
 
@@ -51,12 +53,14 @@ def mettre_a_jour_utilisateur_db(
             return False
 
         if login_original != nouveau_login and nouveau_login in utilisateurs:
-            result["message"] = f"Le nouveau login '{nouveau_login}' est déjà utilisé par un autre compte."
+            result["message"] = f"Le nouveau login '{nouveau_login}' est déjà utilisé."
             return False
 
-        user_data = utilisateurs.pop(login_original)
+        user_data = utilisateurs.pop(login_original) if login_original != nouveau_login else utilisateurs[
+            login_original]
 
         user_data["email"] = nouvel_email
+
         valid_roles = []
         if nouveau_login == "admin":
             valid_roles.append("admin")
@@ -68,13 +72,16 @@ def mettre_a_jour_utilisateur_db(
         if nouveau_mot_de_passe:
             user_data["hashed_password"] = generer_hachage_mdp(nouveau_mot_de_passe)
 
+        if preferences:
+            for key, value in preferences.items():
+                user_data[key] = value
+
         utilisateurs[nouveau_login] = user_data
         result["success"] = True
-        result["message"] = f"Utilisateur '{login_original}' mis à jour avec succès (login: '{nouveau_login}')."
+        result["message"] = f"Utilisateur '{login_original}' mis à jour avec succès."
         return True
 
-    read_modify_write_json(USER_DATA_FILE, modification)
-    return result["success"], result["message"]
+    return read_modify_write_json(USER_DATA_FILE, modification)
 
 
 def utilisateur_existant(nom_utilisateur: str) -> bool:
