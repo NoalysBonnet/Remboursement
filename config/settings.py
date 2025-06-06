@@ -4,38 +4,36 @@ import configparser
 import sys
 
 def get_application_base_path():
+    """ Obtient le chemin de base de l'application, fonctionne pour le dev et pour l'exécutable PyInstaller. """
     if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
+        # Si l'application est 'gelée' (par PyInstaller), le chemin est le dossier temporaire _MEIPASS
+        return sys._MEIPASS
     else:
+        # En mode développement, c'est le dossier racine du projet
         return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 APP_ROOT_PATH = get_application_base_path()
 
 # --- CONFIGURATION DES CHEMINS DE DONNÉES ---
-# IMPORTANT : Adaptez ce chemin pour le déploiement final.
-# C'est l'unique emplacement où les données partagées (JSON, dossiers de demandes) seront lues et écrites.
-# Exemple pour un lecteur réseau mappé 'P:': "P:\\Applications\\GestionRemboursements\\DonneesPartagees"
-# Exemple pour un chemin UNC : "\\\\SERVEUR\\Partage\\GestionRemboursements\\DonneesPartagees"
-
 # MODE DÉPLOIEMENT (à décommenter pour créer l'EXE)
-SHARED_DATA_BASE_PATH = "\\\\192.168.197.43\\Commun\\REMBOURSEMENT"
+#SHARED_DATA_BASE_PATH = "\\\\192.168.197.43\\Commun\\REMBOURSEMENT"
 
 # MODE DÉVELOPPEMENT LOCAL (à commenter pour créer l'EXE)
-#SHARED_DATA_BASE_PATH = os.path.join(APP_ROOT_PATH, "donnees_partagees_mock")
+SHARED_DATA_BASE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "donnees_partagees_mock")
 
 
 # Détermine automatiquement si l'application est en mode déploiement ou développement
-IS_DEPLOYMENT_MODE = not SHARED_DATA_BASE_PATH.startswith(APP_ROOT_PATH)
+IS_DEPLOYMENT_MODE = not SHARED_DATA_BASE_PATH.startswith(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # --- FIN DE LA CONFIGURATION DES CHEMINS ---
 
 
 # Sous-dossiers et fichiers de données, construits à partir du chemin de base
 APP_DATA_JSON_DIR = os.path.join(SHARED_DATA_BASE_PATH, "data_json")
-REMBOURSEMENT_FILES_DIR = os.path.join(SHARED_DATA_BASE_PATH, "Demande_Remboursement")
+REMBOURSEMENTS_ATTACHMENTS_DIR = os.path.join(SHARED_DATA_BASE_PATH, "Demande_Remboursement_Fichiers")
+REMBOURSEMENTS_JSON_DIR = os.path.join(SHARED_DATA_BASE_PATH, "Demande_Remboursement_Data")
 
 USER_DATA_FILE = os.path.join(APP_DATA_JSON_DIR, "utilisateurs.json")
 RESET_CODES_FILE = os.path.join(APP_DATA_JSON_DIR, "codes_reset.json")
-REMBOURSEMENTS_JSON_FILE = os.path.join(APP_DATA_JSON_DIR, "remboursements.json")
 
 
 # --- Configuration Email (ne change pas) ---
@@ -144,14 +142,9 @@ def ensure_shared_dirs_exist():
         return
 
     if not os.path.exists(SHARED_DATA_BASE_PATH):
-        # Ne tente de créer le dossier que s'il s'agit d'un chemin local pour le développement.
-        # Ne pas tenter de créer la racine d'un chemin réseau.
         if IS_DEPLOYMENT_MODE:
-             # En mode déploiement, on suppose que le chemin racine existe déjà.
-             # La vérification de son existence se fera au lancement de app.py
             return
         else:
-             # En mode développement, on peut créer le dossier localement.
             try:
                 os.makedirs(SHARED_DATA_BASE_PATH)
                 print(f"Dossier racine des données locales créé : '{SHARED_DATA_BASE_PATH}'")
@@ -159,8 +152,9 @@ def ensure_shared_dirs_exist():
                 print(f"Erreur critique lors de la création du dossier racine local '{SHARED_DATA_BASE_PATH}': {e}")
                 return
 
-    ensure_dir_exists(APP_DATA_JSON_DIR, "des fichiers JSON")
-    ensure_dir_exists(REMBOURSEMENT_FILES_DIR, "des dossiers de remboursement")
+    ensure_dir_exists(APP_DATA_JSON_DIR, "des fichiers de configuration JSON")
+    ensure_dir_exists(REMBOURSEMENTS_ATTACHMENTS_DIR, "des pièces jointes de remboursement")
+    ensure_dir_exists(REMBOURSEMENTS_JSON_DIR, "des données de remboursement")
 
 def ensure_dir_exists(directory_path: str, dir_description: str):
     if not os.path.exists(directory_path):

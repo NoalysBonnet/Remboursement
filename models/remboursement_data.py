@@ -3,8 +3,9 @@ import os
 import datetime
 import shutil
 import re
-from config.settings import REMBOURSEMENT_FILES_DIR, REMBOURSEMENTS_JSON_FILE
-from utils.data_manager import read_modify_write_json, load_json_data
+import json
+from config.settings import REMBOURSEMENTS_ATTACHMENTS_DIR, REMBOURSEMENTS_JSON_DIR
+from utils.data_manager import read_modify_write_json, load_json_data, _save_json_atomically
 
 
 def _sanitize_directory_name(name: str) -> str:
@@ -26,57 +27,40 @@ def _sanitize_directory_name(name: str) -> str:
 
 
 def charger_toutes_les_demandes_data() -> list:
-    return load_json_data(REMBOURSEMENTS_JSON_FILE)
-
-
-def sauvegarder_toutes_les_demandes_data(remboursements: list):
-    def modification(data):
-        data.clear()
-        data.extend(remboursements)
-
-    read_modify_write_json(REMBOURSEMENTS_JSON_FILE, modification)
+    demandes = []
+    if not os.path.exists(REMBOURSEMENTS_JSON_DIR):
+        return []
+    for filename in os.listdir(REMBOURSEMENTS_JSON_DIR):
+        if filename.endswith('.json'):
+            file_path = os.path.join(REMBOURSEMENTS_JSON_DIR, filename)
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    demandes.append(json.load(f))
+            except (IOError, json.JSONDecodeError) as e:
+                print(f"Erreur lors de la lecture du fichier de demande {filename}: {e}")
+    return demandes
 
 
 def creer_demande_data(nouvelle_demande_dict: dict) -> dict | None:
-    def modification(demandes: list):
-        demandes.append(nouvelle_demande_dict)
+    id_demande = nouvelle_demande_dict.get("id_demande")
+    if not id_demande:
+        return None
 
-    read_modify_write_json(REMBOURSEMENTS_JSON_FILE, modification)
+    file_path = os.path.join(REMBOURSEMENTS_JSON_DIR, f"{id_demande}.json")
+    try:
+        _save_json_atomically(file_path, nouvelle_demande_dict)
+    except IOError as e:
+        print(f"Erreur critique lors de la sauvegarde de la nouvelle demande {id_demande}: {e}")
+        return None
 
     ref_dossier = nouvelle_demande_dict.get("reference_facture_dossier")
-    id_unique_demande = nouvelle_demande_dict.get("id_demande")
-    if ref_dossier and id_unique_demande:
-        dossier_demande_specifique = os.path.join(REMBOURSEMENT_FILES_DIR, ref_dossier)
+    if ref_dossier:
+        dossier_demande_specifique = os.path.join(REMBOURSEMENTS_ATTACHMENTS_DIR, ref_dossier)
         nom_fichier_info_txt = "informations_demande.txt"
         chemin_fichier_info_txt = os.path.join(dossier_demande_specifique, nom_fichier_info_txt)
         try:
             with open(chemin_fichier_info_txt, 'w', encoding='utf-8') as f_txt:
-                f_txt.write(f"Informations pour la demande: {id_unique_demande}\n")
-                f_txt.write("=" * 40 + "\n")
-                for cle, valeur in nouvelle_demande_dict.items():
-                    if cle == "historique_statuts":
-                        f_txt.write("\nHistorique des Statuts et Commentaires:\n")
-                        if isinstance(valeur, list) and valeur:
-                            for item_hist in valeur:
-                                f_txt.write(f"  - Statut: {item_hist.get('statut', 'N/A')}\n")
-                                f_txt.write(f"    Date: {item_hist.get('date', 'N/A')}\n")
-                                f_txt.write(f"    Par: {item_hist.get('par', 'N/A')}\n")
-                                f_txt.write(f"    Commentaire: {item_hist.get('commentaire', 'N/A')}\n")
-                                f_txt.write("-" * 20 + "\n")
-                        else:
-                            f_txt.write("  Aucun historique disponible.\n")
-                    elif isinstance(valeur, list):
-                        f_txt.write(f"{cle.replace('_', ' ').title()}:\n")
-                        if valeur:
-                            for item_path in valeur:
-                                f_txt.write(f"  - {item_path}\n")
-                        else:
-                            f_txt.write("  N/A\n")
-                    else:
-                        f_txt.write(f"{cle.replace('_', ' ').title()}: {valeur if valeur is not None else 'N/A'}\n")
-                f_txt.write("\n" + "=" * 40 + "\n")
-                f_txt.write(f"Fichier généré le: {datetime.datetime.now().isoformat()}\n")
-            print(f"Fichier d'information '{chemin_fichier_info_txt}' créé avec succès.")
+                f_txt.write(json.dumps(nouvelle_demande_dict, indent=4, ensure_ascii=False))
         except IOError as e:
             print(f"Erreur lors de la création du fichier d'information '{chemin_fichier_info_txt}': {e}")
 
@@ -84,78 +68,71 @@ def creer_demande_data(nouvelle_demande_dict: dict) -> dict | None:
 
 
 def obtenir_demande_par_id_data(id_demande: str) -> dict | None:
-    demandes = charger_toutes_les_demandes_data()
-    for demande in demandes:
-        if demande.get("id_demande") == id_demande:
-            return demande
-    return None
+    file_path = os.path.join(REMBOURSEMENTS_JSON_DIR, f"{id_demande}.json")
+    if not os.path.exists(file_path):
+        return None
+    return load_json_data(file_path)
 
 
 def mettre_a_jour_demande_data(id_demande: str, updates: dict) -> bool:
-    def modification(demandes: list) -> bool:
-        demande_trouvee_et_maj = False
-        for i, demande in enumerate(demandes):
-            if demande.get("id_demande") == id_demande:
-                for cle, valeur in updates.items():
-                    if cle in ["chemins_factures_stockees", "chemins_rib_stockes",
-                               "pieces_capture_trop_percu"] and isinstance(valeur, str):
-                        if cle not in demandes[i] or not isinstance(demandes[i][cle], list):
-                            demandes[i][cle] = []
-                        demandes[i][cle].append(valeur)
-                    else:
-                        demandes[i][cle] = valeur
+    file_path = os.path.join(REMBOURSEMENTS_JSON_DIR, f"{id_demande}.json")
+    if not os.path.exists(file_path):
+        return False
 
-                demandes[i]["date_derniere_modification"] = datetime.datetime.now().isoformat()
-                demande_trouvee_et_maj = True
-                break
-        return demande_trouvee_et_maj
+    def modification(demande: dict) -> bool:
+        for cle, valeur in updates.items():
+            if cle in ["chemins_factures_stockees", "chemins_rib_stockes",
+                       "pieces_capture_trop_percu"] and isinstance(valeur, str):
+                if cle not in demande or not isinstance(demande[cle], list):
+                    demande[cle] = []
+                demande[cle].append(valeur)
+            else:
+                demande[cle] = valeur
+        demande["date_derniere_modification"] = datetime.datetime.now().isoformat()
+        return True
 
-    return read_modify_write_json(REMBOURSEMENTS_JSON_FILE, modification)
+    return read_modify_write_json(file_path, modification)
 
 
 def ajouter_entree_historique_data(id_demande: str, nouvelle_entree: dict) -> bool:
-    def modification(demandes: list) -> bool:
-        demande_trouvee = False
-        for i, demande in enumerate(demandes):
-            if demande.get("id_demande") == id_demande:
-                if "historique_statuts" not in demandes[i] or not isinstance(demandes[i]["historique_statuts"], list):
-                    demandes[i]["historique_statuts"] = []
-                demandes[i]["historique_statuts"].append(nouvelle_entree)
-                demande_trouvee = True
-                break
-        return demande_trouvee
+    file_path = os.path.join(REMBOURSEMENTS_JSON_DIR, f"{id_demande}.json")
+    if not os.path.exists(file_path):
+        return False
 
-    return read_modify_write_json(REMBOURSEMENTS_JSON_FILE, modification)
+    def modification(demande: dict) -> bool:
+        if "historique_statuts" not in demande or not isinstance(demande["historique_statuts"], list):
+            demande["historique_statuts"] = []
+        demande["historique_statuts"].append(nouvelle_entree)
+        return True
+
+    return read_modify_write_json(file_path, modification)
 
 
 def supprimer_demande_par_id_data(id_demande_a_supprimer: str) -> tuple[bool, str]:
-    demande_a_supprimer_trouvee = [None]
-
-    def modification(demandes: list) -> bool:
-        original_len = len(demandes)
-        demande_a_supprimer_trouvee[0] = next((d for d in demandes if d.get("id_demande") == id_demande_a_supprimer),
-                                              None)
-
-        if demande_a_supprimer_trouvee[0]:
-            demandes[:] = [d for d in demandes if d.get("id_demande") != id_demande_a_supprimer]
-            return len(demandes) < original_len
-        return False
-
-    succes = read_modify_write_json(REMBOURSEMENTS_JSON_FILE, modification)
-
-    if not succes:
+    demande_a_supprimer = obtenir_demande_par_id_data(id_demande_a_supprimer)
+    if not demande_a_supprimer:
         return False, f"Demande ID {id_demande_a_supprimer} non trouvée."
 
-    if demande_a_supprimer_trouvee[0]:
-        ref_dossier = demande_a_supprimer_trouvee[0].get("reference_facture_dossier")
-        if ref_dossier:
-            chemin_dossier_demande = os.path.join(REMBOURSEMENT_FILES_DIR, ref_dossier)
-            if os.path.exists(chemin_dossier_demande) and os.path.isdir(chemin_dossier_demande):
-                try:
-                    shutil.rmtree(chemin_dossier_demande)
-                    print(f"Dossier {chemin_dossier_demande} supprimé avec succès.")
-                except OSError as e:
-                    print(f"Erreur lors de la suppression du dossier {chemin_dossier_demande}: {e}")
-                    return True, f"Demande ID {id_demande_a_supprimer} supprimée du JSON, mais échec de la suppression du dossier {ref_dossier}."
+    file_path = os.path.join(REMBOURSEMENTS_JSON_DIR, f"{id_demande_a_supprimer}.json")
+    backup_path = file_path + ".bak"
 
-    return True, f"Demande ID {id_demande_a_supprimer} supprimée avec succès."
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        if os.path.exists(backup_path):
+            os.remove(backup_path)
+    except OSError as e:
+        return False, f"Erreur lors de la suppression des fichiers de données pour la demande {id_demande_a_supprimer}: {e}"
+
+    ref_dossier = demande_a_supprimer.get("reference_facture_dossier")
+    if ref_dossier:
+        chemin_dossier_demande = os.path.join(REMBOURSEMENTS_ATTACHMENTS_DIR, ref_dossier)
+        if os.path.exists(chemin_dossier_demande) and os.path.isdir(chemin_dossier_demande):
+            try:
+                shutil.rmtree(chemin_dossier_demande)
+                print(f"Dossier {chemin_dossier_demande} supprimé avec succès.")
+            except OSError as e:
+                print(f"Erreur lors de la suppression du dossier {chemin_dossier_demande}: {e}")
+                return True, f"Données de la demande ID {id_demande_a_supprimer} supprimées, mais échec de la suppression du dossier de pièces jointes."
+
+    return True, f"Demande ID {id_demande_a_supprimer} et ses fichiers associés supprimés avec succès."

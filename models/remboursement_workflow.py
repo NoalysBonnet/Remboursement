@@ -4,7 +4,7 @@ import datetime
 import shutil
 from . import remboursement_data
 from config.settings import (
-    REMBOURSEMENT_FILES_DIR,
+    REMBOURSEMENTS_ATTACHMENTS_DIR,
     STATUT_CREEE, STATUT_TROP_PERCU_CONSTATE,
     STATUT_REFUSEE_CONSTAT_TP, STATUT_ANNULEE,
     STATUT_VALIDEE, STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO,
@@ -27,19 +27,17 @@ def _ajouter_pj_a_liste(id_demande: str, chemin_pj_source: str, utilisateur: str
     if not ref_dossier:
         return False, "Référence de dossier non trouvée.", None
 
-    dossier_demande_specifique = os.path.join(REMBOURSEMENT_FILES_DIR, ref_dossier)
+    dossier_demande_specifique = os.path.join(REMBOURSEMENTS_ATTACHMENTS_DIR, ref_dossier)
     os.makedirs(dossier_demande_specifique, exist_ok=True)
 
     base_nom_pj = os.path.basename(chemin_pj_source)
 
     current_pjs_list = demande_data_obj.get(type_pj_key, [])
-    # S'assurer que c'est une liste, surtout pour la rétrocompatibilité si une ancienne entrée était une chaîne
     if not isinstance(current_pjs_list, list):
         current_pjs_list = [current_pjs_list] if current_pjs_list else []
 
     version_index = len(current_pjs_list) + 1
 
-    # Nom de fichier versionné pour éviter les écrasements
     nom_fichier_pj_stockee = f"{prefixe_nom_fichier}_v{version_index}_{ref_dossier}_{_sanitize_directory_name_workflow(base_nom_pj)}"
     chemin_pj_destination = os.path.join(dossier_demande_specifique, nom_fichier_pj_stockee)
 
@@ -50,10 +48,10 @@ def _ajouter_pj_a_liste(id_demande: str, chemin_pj_source: str, utilisateur: str
 
     chemin_pj_relatif = os.path.join(ref_dossier, nom_fichier_pj_stockee)
 
-    current_pjs_list.append(chemin_pj_relatif)  # Ajouter le nouveau chemin à la liste
+    current_pjs_list.append(chemin_pj_relatif)
 
     updates = {
-        type_pj_key: current_pjs_list,  # Mettre à jour la demande avec la liste complète des PJ
+        type_pj_key: current_pjs_list,
         "derniere_modification_par": utilisateur,
         "date_derniere_modification": datetime.datetime.now().isoformat()
     }
@@ -62,12 +60,11 @@ def _ajouter_pj_a_liste(id_demande: str, chemin_pj_source: str, utilisateur: str
     if succes_maj:
         return True, f"Pièce jointe '{base_nom_pj}' (v{version_index}) ajoutée.", chemin_pj_relatif
     else:
-        # Tenter de supprimer la PJ copiée si la mise à jour du JSON échoue
         if os.path.exists(chemin_pj_destination):
             try:
                 os.remove(chemin_pj_destination)
             except OSError:
-                pass  # Ignorer si la suppression échoue aussi
+                pass
         return False, "Erreur lors de la mise à jour des données de la demande après copie PJ.", None
 
 
@@ -241,18 +238,15 @@ def pneri_resoumettre_demande_action(id_demande: str, nouveau_commentaire: str,
     if demande_actuelle.get("statut") != STATUT_REFUSEE_CONSTAT_TP:
         return False, f"La demande n'est pas au statut '{STATUT_REFUSEE_CONSTAT_TP}'."
 
-    # Ajouter nouvelle facture si fournie
     if nouveau_chemin_facture_source:
         succes_fact, msg_fact, _ = _ajouter_pj_a_liste(id_demande, nouveau_chemin_facture_source, utilisateur,
                                                        "chemins_factures_stockees", "facture")
         if not succes_fact: return False, msg_fact
 
-    # Ajouter nouveau RIB (obligatoire pour resoumission)
     succes_rib, msg_rib, _ = _ajouter_pj_a_liste(id_demande, nouveau_chemin_rib_source, utilisateur,
                                                  "chemins_rib_stockes", "RIB")
     if not succes_rib: return False, msg_rib
 
-    # Mettre à jour le statut et l'historique APRÈS l'ajout des PJs
     updates = {
         "statut": STATUT_CREEE,
         "derniere_modification_par": utilisateur,
@@ -281,12 +275,10 @@ def mlupo_resoumettre_constat_action(id_demande: str, nouveau_commentaire: str,
     if demande_actuelle.get("statut") != STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO:
         return False, f"La demande n'est pas au statut '{STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO}'."
 
-    # 1. Ajouter la nouvelle PJ de trop-perçu
     succes_pj, msg_pj, _ = ajouter_piece_jointe_trop_percu_action(id_demande, nouveau_chemin_pj_trop_percu_source,
                                                                   utilisateur)
     if not succes_pj: return False, msg_pj
 
-    # 2. Mettre à jour le statut et l'historique
     updates = {
         "statut": STATUT_TROP_PERCU_CONSTATE,
         "derniere_modification_par": utilisateur,

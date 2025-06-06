@@ -5,7 +5,7 @@ from tkinter import messagebox, simpledialog
 import datetime
 import traceback
 from config.settings import (
-    REMBOURSEMENTS_JSON_FILE, STATUT_CREEE,
+    REMBOURSEMENTS_JSON_DIR, STATUT_CREEE,
     STATUT_REFUSEE_CONSTAT_TP, STATUT_ANNULEE,
     STATUT_PAIEMENT_EFFECTUE, STATUT_TROP_PERCU_CONSTATE,
     STATUT_VALIDEE, STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO
@@ -183,8 +183,8 @@ class MainView(ctk.CTkFrame):
     def _check_for_data_updates(self):
         try:
             current_mtime = 0
-            if os.path.exists(REMBOURSEMENTS_JSON_FILE):
-                current_mtime = os.path.getmtime(REMBOURSEMENTS_JSON_FILE)
+            if os.path.exists(REMBOURSEMENTS_JSON_DIR):
+                current_mtime = os.path.getmtime(REMBOURSEMENTS_JSON_DIR)
 
             if current_mtime != self._last_known_remboursements_mtime:
                 print(f"{datetime.datetime.now()}: Détection de modifications externes, rafraîchissement forcé...")
@@ -198,7 +198,7 @@ class MainView(ctk.CTkFrame):
 
     def start_polling(self):
         self.stop_polling()
-        self._last_known_remboursements_mtime = 0  # Force check on first run
+        self._last_known_remboursements_mtime = 0
         self._check_for_data_updates()
 
     def stop_polling(self):
@@ -207,14 +207,21 @@ class MainView(ctk.CTkFrame):
             self._polling_job_id = None
 
     def afficher_liste_demandes(self, force_reload: bool = False):
-        if force_reload:
-            self._fetch_user_roles()
-            self.all_demandes_cache = self.remboursement_controller.get_toutes_les_demandes_formatees()
-            if os.path.exists(REMBOURSEMENTS_JSON_FILE):
-                self._last_known_remboursements_mtime = os.path.getmtime(REMBOURSEMENTS_JSON_FILE)
-
         for widget in self.scrollable_frame_demandes.winfo_children():
             widget.destroy()
+
+        if force_reload:
+            loading_label = ctk.CTkLabel(self.scrollable_frame_demandes, text="Chargement des données...",
+                                         font=ctk.CTkFont(size=16))
+            loading_label.pack(pady=20)
+            self.update_idletasks()
+
+            self._fetch_user_roles()
+            self.all_demandes_cache = self.remboursement_controller.get_toutes_les_demandes_formatees()
+            if os.path.exists(REMBOURSEMENTS_JSON_DIR):
+                self._last_known_remboursements_mtime = os.path.getmtime(REMBOURSEMENTS_JSON_DIR)
+
+            loading_label.destroy()
 
         terme_recherche = self.search_var.get().lower().strip() if hasattr(self, 'search_var') else ""
         demandes_a_afficher_data = []
@@ -267,7 +274,8 @@ class MainView(ctk.CTkFrame):
 
     def _action_voir_historique_docs(self, demande_data: dict):
         if not demande_data:
-            messagebox.showwarning("Avertissement", "Données de la demande non disponibles pour voir l'historique.", parent=self)
+            messagebox.showwarning("Avertissement", "Données de la demande non disponibles pour voir l'historique.",
+                                   parent=self)
             return
 
         callbacks_historique = {
@@ -418,9 +426,11 @@ class MainView(ctk.CTkFrame):
             path = self.remboursement_controller.selectionner_fichier_document_ou_image(
                 "Nouvelle Facture (Optionnel)")
             if path:
-                chemin_facture_var.set(os.path.basename(path)); new_facture_path = path
+                chemin_facture_var.set(os.path.basename(path));
+                new_facture_path = path
             else:
-                chemin_facture_var.set("Nouvelle Facture: Non sélectionnée (Optionnel)"); new_facture_path = None
+                chemin_facture_var.set("Nouvelle Facture: Non sélectionnée (Optionnel)");
+                new_facture_path = None
 
         ctk.CTkButton(dialog, text="Choisir Nouvelle Facture", command=_sel_new_facture).pack(pady=5)
         ctk.CTkLabel(dialog, textvariable=chemin_facture_var).pack()
@@ -432,9 +442,11 @@ class MainView(ctk.CTkFrame):
             nonlocal new_rib_path
             path = self.remboursement_controller.selectionner_fichier_document_ou_image("Nouveau RIB (Obligatoire)")
             if path:
-                chemin_rib_var.set(os.path.basename(path)); new_rib_path = path
+                chemin_rib_var.set(os.path.basename(path));
+                new_rib_path = path
             else:
-                chemin_rib_var.set("Nouveau RIB: Non sélectionné (Obligatoire)"); new_rib_path = None
+                chemin_rib_var.set("Nouveau RIB: Non sélectionné (Obligatoire)");
+                new_rib_path = None
 
         ctk.CTkButton(dialog, text="Choisir Nouveau RIB", command=_sel_new_rib).pack(pady=5)
         ctk.CTkLabel(dialog, textvariable=chemin_rib_var).pack()
@@ -484,9 +496,11 @@ class MainView(ctk.CTkFrame):
             path = self.remboursement_controller.selectionner_fichier_document_ou_image(
                 "Nouvelle Preuve Trop-Perçu (Obligatoire)")
             if path:
-                chemin_pj_var.set(os.path.basename(path)); new_pj_path = path
+                chemin_pj_var.set(os.path.basename(path));
+                new_pj_path = path
             else:
-                chemin_pj_var.set("Nouvelle Preuve TP: Non sélectionnée (Obligatoire)"); new_pj_path = None
+                chemin_pj_var.set("Nouvelle Preuve TP: Non sélectionnée (Obligatoire)");
+                new_pj_path = None
 
         ctk.CTkButton(dialog, text="Choisir Nouvelle Preuve TP", command=_sel_new_pj_tp).pack(pady=5)
         ctk.CTkLabel(dialog, textvariable=chemin_pj_var).pack()

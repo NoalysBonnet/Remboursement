@@ -1,18 +1,63 @@
+# setup_users.py
 import os
 import getpass
+import sys
+from config.settings import IS_DEPLOYMENT_MODE, SHARED_DATA_BASE_PATH, APP_DATA_JSON_DIR, USER_DATA_FILE
 from models.user_model import (
     obtenir_info_utilisateur,
     ajouter_utilisateur_db,
     mettre_a_jour_utilisateur_db
 )
-from config.settings import USER_DATA_FILE
 
 
-def initialiser_utilisateurs():
-    print("Configuration interactive des utilisateurs de l'application.")
+def initialiser_environnement():
+    print("=" * 60)
+    print("--- SCRIPT D'INITIALISATION DE L'ENVIRONNEMENT DE L'APPLICATION ---")
+    print("=" * 60)
+
+    # 1. Affiche le mode de fonctionnement actuel (local ou réseau)
+    if IS_DEPLOYMENT_MODE:
+        print("\n[!] MODE DÉPLOIEMENT RÉSEAU DÉTECTÉ [!]")
+        print(f"Le script va opérer sur le dossier partagé :\n    {SHARED_DATA_BASE_PATH}")
+    else:
+        print("\n[!] MODE DÉVELOPPEMENT LOCAL DÉTECTÉ [!]")
+        print(f"Le script va opérer sur le dossier local :\n    {SHARED_DATA_BASE_PATH}")
+
+    # La création des dossiers est déjà gérée à l'import de settings.py
+    print("\nStructure des dossiers prête.")
+
+    # 2. Demande une confirmation à l'utilisateur pour la sécurité
+    try:
+        consent = input("\nÊtes-vous sûr de vouloir continuer et potentiellement modifier les données ? (o/n) : ")
+    except KeyboardInterrupt:
+        print("\nOpération annulée.")
+        sys.exit()
+    if consent.lower() != 'o':
+        print("Opération annulée par l'utilisateur.")
+        sys.exit()
+
+    # 3. Gère l'ancien fichier de données s'il existe
+    obsolete_file = os.path.join(APP_DATA_JSON_DIR, 'remboursements.json')
+    if os.path.exists(obsolete_file):
+        print("\n[AVERTISSEMENT] L'ancien fichier de données 'remboursements.json' a été trouvé.")
+        print("Ce fichier n'est plus utilisé et peut être archivé ou supprimé.")
+        try:
+            action = input("Voulez-vous (a)rchiver (en .old), (s)upprimer ou (i)gnorer ce fichier ? (a/s/i) : ")
+            if action.lower() == 'a':
+                os.rename(obsolete_file, obsolete_file + '.old')
+                print("-> Fichier archivé avec succès en 'remboursements.json.old'.")
+            elif action.lower() == 's':
+                os.remove(obsolete_file)
+                print("-> Fichier supprimé avec succès.")
+            else:
+                print("-> Fichier ignoré.")
+        except KeyboardInterrupt:
+            print("\nOpération annulée.")
+            sys.exit()
+
+    print("\n--- Configuration des comptes utilisateurs ---")
     print("Ce script va créer ou mettre à jour les comptes utilisateurs.")
     print("Pour les mots de passe, la saisie est masquée pour des raisons de sécurité.")
-    print("-" * 60)
 
     utilisateurs_par_defaut = {
         "p.neri": {"nom_complet": "Philipe Neri", "email": "p.neri@noalys.com", "roles": ["demandeur"]},
@@ -42,49 +87,19 @@ def initialiser_utilisateurs():
         utilisateur_existant = obtenir_info_utilisateur(login)
 
         if utilisateur_existant:
-            print(f"L'utilisateur '{login}' existe déjà. Vérification des informations pour la mise à jour.")
-            email_actuel = utilisateur_existant.get("email", email_suggere)
-            roles_actuels = utilisateur_existant.get("roles", [])
-            print(f"  Email actuel: {email_actuel}")
-            print(f"  Rôles actuels: {', '.join(roles_actuels)}")
-
-            email_final_input = input(f"  Nouvel email (laisser vide pour conserver '{email_actuel}'): ")
-            email_final = email_final_input.strip() or email_actuel
-
-            roles_final_input = input(
-                f"  Nouveaux rôles (séparés par ',', laisser vide pour conserver les rôles actuels): ")
-            if roles_final_input.strip():
-                roles_final = [role.strip() for role in roles_final_input.split(',') if role.strip()]
-            else:
-                roles_final = roles_actuels
-
+            print(f"L'utilisateur '{login}' existe déjà. Mise à jour possible.")
             mdp = getpass.getpass(f"  Nouveau mot de passe pour '{login}' (laisser vide pour ne pas changer): ")
-
-            succes, message = mettre_a_jour_utilisateur_db(
-                login_original=login,
-                nouveau_login=login,
-                nouvel_email=email_final,
-                nouveaux_roles=roles_final,
-                nouveau_mot_de_passe=mdp if mdp else None
-            )
-
-            if succes:
-                print(f"  ✅ SUCCÈS: {message}")
+            if mdp:
+                succes, message = mettre_a_jour_utilisateur_db(login, login, utilisateur_existant['email'],
+                                                               utilisateur_existant['roles'], mdp)
+                if succes:
+                    print(f"  ✅ SUCCÈS: Mot de passe mis à jour pour '{login}'.")
+                else:
+                    print(f"  ❌ ERREUR: {message}")
             else:
-                print(f"  ❌ ERREUR: {message}")
-
+                print("  Mot de passe non modifié.")
         else:
-            print(f"L'utilisateur '{login}' n'existe pas. Procédure de création.")
-
-            email_final_input = input(f"  Email (par défaut '{email_suggere}'): ")
-            email_final = email_final_input.strip() or email_suggere
-
-            roles_final_input = input(f"  Rôles (séparés par ',', par défaut '{','.join(roles_suggeres)}'): ")
-            if roles_final_input.strip():
-                roles_final = [role.strip() for role in roles_final_input.split(',') if role.strip()]
-            else:
-                roles_final = roles_suggeres
-
+            print(f"L'utilisateur '{login}' n'existe pas. Création...")
             mdp = ""
             while not mdp:
                 mdp = getpass.getpass(f"  Entrez le mot de passe pour '{login}' (obligatoire pour création): ")
@@ -94,24 +109,19 @@ def initialiser_utilisateurs():
             succes = ajouter_utilisateur_db(
                 nom_utilisateur=login,
                 mot_de_passe=mdp,
-                email=email_final,
-                roles=roles_final
+                email=email_suggere,
+                roles=roles_suggeres
             )
-
             if succes:
                 print(f"  ✅ SUCCÈS: Utilisateur '{login}' créé.")
             else:
                 print(f"  ❌ ERREUR: L'utilisateur '{login}' n'a pas pu être créé.")
 
-    print("\n" + "-" * 60)
+    print("\n" + "=" * 60)
     print("Configuration des utilisateurs terminée.")
-    chemin_fichier_json = os.path.abspath(USER_DATA_FILE)
-    if os.path.exists(chemin_fichier_json):
-        print(f"Fichier de données utilisateurs trouvé ici : {chemin_fichier_json}")
-    else:
-        print(
-            f"ATTENTION: Fichier de données non trouvé à {chemin_fichier_json}. Il sera créé à la première modification.")
+    print(f"Le fichier des utilisateurs se trouve ici : {os.path.abspath(USER_DATA_FILE)}")
+    print("=" * 60)
 
 
 if __name__ == "__main__":
-    initialiser_utilisateurs()
+    initialiser_environnement()
