@@ -5,8 +5,13 @@ import os
 import sys
 import subprocess
 import shutil
-from config.settings import STATUT_CREEE, STATUT_TROP_PERCU_CONSTATE, STATUT_REFUSEE_CONSTAT_TP, STATUT_ANNULEE, \
-    STATUT_VALIDEE, STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO, STATUT_PAIEMENT_EFFECTUE
+# Importer les constantes de statut depuis la configuration
+from config.settings import (
+    STATUT_CREEE, STATUT_TROP_PERCU_CONSTATE,
+    STATUT_REFUSEE_CONSTAT_TP, STATUT_ANNULEE,
+    STATUT_VALIDEE, STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO,
+    STATUT_PAIEMENT_EFFECTUE
+)
 
 
 class RemboursementController:
@@ -97,7 +102,7 @@ class RemboursementController:
                 for rel_path in chemins_factures_rel:
                     abs_path = remboursement_model.get_chemin_absolu_piece_jointe(rel_path)
                     if abs_path: abs_factures.append(abs_path)
-            elif isinstance(chemins_factures_rel, str):  # Rétrocompatibilité si c'était une chaîne
+            elif isinstance(chemins_factures_rel, str):  # Rétrocompatibilité
                 abs_path = remboursement_model.get_chemin_absolu_piece_jointe(chemins_factures_rel)
                 if abs_path: abs_factures.append(abs_path)
             demande_data["chemins_abs_factures_stockees"] = abs_factures
@@ -129,7 +134,7 @@ class RemboursementController:
             return False, "Fichier source non trouvé ou chemin invalide."
 
         nom_fichier_original = os.path.basename(chemin_absolu_pj_source)
-        filetypes_save = (("Tous les fichiers", "*.*"),)
+        filetypes_save = (("Tous les fichiers", "*.*"),)  # Fallback
         if '.' in nom_fichier_original:
             ext = nom_fichier_original.rsplit('.', 1)[1]
             filetypes_save = ((f"Fichier .{ext.upper()}", f"*.{ext.lower()}"), ("Tous les fichiers", "*.*"))
@@ -152,6 +157,7 @@ class RemboursementController:
     def supprimer_demande(self, id_demande: str) -> tuple[bool, str]:
         return remboursement_model.supprimer_demande_par_id(id_demande)
 
+    # --- Actions de Workflow ---
     def mlupo_accepter_constat(
             self,
             id_demande: str,
@@ -168,7 +174,7 @@ class RemboursementController:
             id_demande, chemin_pj_trop_percu_source, self.utilisateur_actuel
         )
         if not succes_pj:
-            return False, f"Erreur lors de l'ajout de la PJ : {msg_pj}"
+            return False, f"Erreur PJ: {msg_pj}"
 
         # 2. Puis mettre à jour le statut et le commentaire
         succes_statut, msg_statut = remboursement_model.accepter_constat_trop_percu(
@@ -178,8 +184,6 @@ class RemboursementController:
         if succes_statut:
             return True, msg_statut
         else:
-            # Si le statut n'a pas pu être mis à jour, il faudrait idéalement une transaction ou une annulation de l'ajout de PJ.
-            # Pour l'instant, on retourne l'erreur de statut.
             return False, f"PJ ajoutée, mais erreur de mise à jour du statut : {msg_statut}"
 
     def mlupo_refuser_constat(self, id_demande: str, commentaire: str) -> tuple[bool, str]:
