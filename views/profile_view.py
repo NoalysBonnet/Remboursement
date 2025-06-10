@@ -7,6 +7,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from config.settings import PROFILE_PICTURES_DIR
 from utils.image_utils import create_circular_image
+from utils.password_utils import check_password_strength
 
 
 class ProfileView(ctk.CTkToplevel):
@@ -15,11 +16,12 @@ class ProfileView(ctk.CTkToplevel):
         self.transient(master)
         self.grab_set()
         self.title(f"Profil de {current_user}")
-        self.geometry("500x700")
+        self.geometry("500x750")
         self.resizable(False, False)
 
         self.current_user = current_user
         self.auth_controller = auth_controller
+        self.user_data = user_data
         self.on_save_callback = on_save_callback
 
         self.new_profile_pic_source_path = None
@@ -33,7 +35,12 @@ class ProfileView(ctk.CTkToplevel):
         self.pfp_label.pack(pady=(10, 5))
         self.load_profile_picture()
 
-        ctk.CTkButton(main_frame, text="Changer de photo", command=self._select_profile_picture).pack(pady=5)
+        pfp_buttons_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        pfp_buttons_frame.pack(pady=5)
+        ctk.CTkButton(pfp_buttons_frame, text="Changer de photo", command=self._select_profile_picture).pack(
+            side="left", padx=5)
+        ctk.CTkButton(pfp_buttons_frame, text="Supprimer Photo", command=self._remove_profile_picture,
+                      fg_color="#D32F2F", hover_color="#B71C1C").pack(side="left", padx=5)
 
         ctk.CTkLabel(main_frame, text="Adresse e-mail:", anchor="w").pack(fill="x", padx=20, pady=(15, 2))
         self.email_entry = ctk.CTkEntry(main_frame)
@@ -48,12 +55,18 @@ class ProfileView(ctk.CTkToplevel):
             fill="x", padx=20, pady=(5, 2))
         self.new_password_entry = ctk.CTkEntry(main_frame, show="*")
         self.new_password_entry.pack(fill="x", padx=20)
+        self.new_password_entry.bind("<KeyRelease>", self._update_password_strength)
 
-        ctk.CTkLabel(main_frame, text="Mode d'apparence:", anchor="w").pack(fill="x", padx=20, pady=(15, 2))
-        appearance_modes = ["System", "Light", "Dark"]
-        self.appearance_menu = ctk.CTkOptionMenu(main_frame, values=appearance_modes)
-        self.appearance_menu.set(user_data.get("appearance_mode", "System"))
-        self.appearance_menu.pack(fill="x", padx=20)
+        # Indicateur de force du mot de passe
+        self.strength_progress = ctk.CTkProgressBar(main_frame, progress_color="grey")
+        self.strength_progress.set(0)
+        self.strength_progress.pack(fill="x", padx=20, pady=(5, 2))
+        self.strength_label = ctk.CTkLabel(main_frame, text="", font=ctk.CTkFont(size=12))
+        self.strength_label.pack(fill="x", padx=20)
+
+        self.show_password_var = ctk.BooleanVar()
+        ctk.CTkCheckBox(main_frame, text="Afficher les mots de passe", variable=self.show_password_var,
+                        command=self._toggle_password_visibility).pack(padx=20, pady=10)
 
         ctk.CTkLabel(main_frame, text="Thème de couleur:", anchor="w").pack(fill="x", padx=20, pady=(15, 2))
         themes = ["blue", "dark-blue", "green"]
@@ -74,6 +87,34 @@ class ProfileView(ctk.CTkToplevel):
                                                                                                     padx=10)
         ctk.CTkButton(button_frame, text="Annuler", command=self.destroy, fg_color="gray").pack(side="left", padx=10)
 
+    def _toggle_password_visibility(self):
+        show_char = "" if self.show_password_var.get() else "*"
+        self.old_password_entry.configure(show=show_char)
+        self.new_password_entry.configure(show=show_char)
+
+    def _update_password_strength(self, event=None):
+        password = self.new_password_entry.get()
+        if not password:
+            self.strength_label.configure(text="")
+            self.strength_progress.set(0)
+            return
+
+        score, feedback = check_password_strength(password)
+        progress = score / 5.0
+
+        colors = {
+            "Très faible": "#D32F2F",
+            "Faible": "#F44336",
+            "Moyen": "#FFC107",
+            "Fort": "#4CAF50",
+            "Très fort": "#4CAF50"
+        }
+        color = colors.get(feedback, "grey")
+
+        self.strength_progress.set(progress)
+        self.strength_progress.configure(progress_color=color)
+        self.strength_label.configure(text=feedback, text_color=color)
+
     def load_profile_picture(self):
         pfp_image = None
         if self.profile_pic_rel_path:
@@ -84,15 +125,16 @@ class ProfileView(ctk.CTkToplevel):
         if pfp_image:
             self.pfp_label.configure(image=pfp_image)
         else:
-            pfp_size = self.pfp_size
-            placeholder = Image.new('RGBA', (pfp_size, pfp_size), (80, 80, 80, 255))
+            placeholder = Image.new('RGBA', (self.pfp_size, self.pfp_size), (80, 80, 80, 255))
             draw = ImageDraw.Draw(placeholder)
             try:
                 font = ImageFont.truetype("arial", 40)
             except IOError:
                 font = ImageFont.load_default()
-            draw.text((pfp_size / 2, pfp_size / 2), self.current_user[0].upper(), font=font, anchor="mm")
-            ctk_placeholder = ctk.CTkImage(light_image=placeholder, dark_image=placeholder, size=(pfp_size, pfp_size))
+            initial = self.current_user[0].upper() if self.current_user else "?"
+            draw.text((self.pfp_size / 2, self.pfp_size / 2), initial, font=font, anchor="mm")
+            ctk_placeholder = ctk.CTkImage(light_image=placeholder, dark_image=placeholder,
+                                           size=(self.pfp_size, self.pfp_size))
             self.pfp_label.configure(image=ctk_placeholder)
             self.pfp_label.image = ctk_placeholder
 
@@ -106,6 +148,19 @@ class ProfileView(ctk.CTkToplevel):
             pfp_image = create_circular_image(filepath, self.pfp_size)
             if pfp_image:
                 self.pfp_label.configure(image=pfp_image)
+
+    def _remove_profile_picture(self):
+        if messagebox.askyesno("Confirmation", "Êtes-vous sûr de vouloir supprimer votre photo de profil ?",
+                               parent=self):
+            success, message = self.auth_controller.remove_user_profile_picture(self.current_user)
+            if success:
+                messagebox.showinfo("Succès", "Photo de profil supprimée.", parent=self)
+                self.profile_pic_rel_path = None
+                self.load_profile_picture()
+                if self.on_save_callback:
+                    self.on_save_callback()
+            else:
+                messagebox.showerror("Erreur", message, parent=self)
 
     def _handle_picture_save(self) -> str | None:
         if not self.new_profile_pic_source_path:
@@ -134,7 +189,6 @@ class ProfileView(ctk.CTkToplevel):
         new_pfp_rel_path = self._handle_picture_save()
 
         updated_prefs = {
-            "appearance_mode": self.appearance_menu.get(),
             "theme_color": self.theme_menu.get(),
             "default_filter": self.filter_menu.get(),
             "profile_picture_path": new_pfp_rel_path

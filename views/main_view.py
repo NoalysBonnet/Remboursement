@@ -11,7 +11,7 @@ from config.settings import (
     STATUT_REFUSEE_CONSTAT_TP, STATUT_ANNULEE,
     STATUT_PAIEMENT_EFFECTUE, STATUT_TROP_PERCU_CONSTATE,
     STATUT_VALIDEE, STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO,
-    PROFILE_PICTURES_DIR, REMBOURSEMENTS_BASE_DIR
+    PROFILE_PICTURES_DIR
 )
 from models import user_model
 from views.document_viewer import DocumentViewerWindow
@@ -51,13 +51,12 @@ class MainView(ctk.CTkFrame):
         self.current_filter = "Toutes les demandes"
         self.current_sort = "Date de création (récent)"
         self.include_archives = ctk.BooleanVar(value=False)
-        self.pfp_size = 80  # Taille de la photo de profil
+        self.pfp_size = 80
 
         try:
             self._fetch_user_data()
             self.current_filter = self.user_data.get("default_filter", "Toutes les demandes")
             self.initial_theme = self.user_data.get("theme_color", "blue")
-            self.initial_appearance = self.user_data.get("appearance_mode", "System")
 
             self.pack(fill="both", expand=True)
             self.main_content_frame = ctk.CTkFrame(self, corner_radius=10)
@@ -71,6 +70,9 @@ class MainView(ctk.CTkFrame):
 
             self.afficher_liste_demandes(force_reload=True)
             self.start_polling()
+
+            self.master.bind("<F5>", lambda event: self.afficher_liste_demandes(force_reload=True))
+
         except Exception as e:
             print(f"ERREUR CRITIQUE DANS MainView.__init__: {e}")
             traceback.print_exc()
@@ -185,9 +187,13 @@ class MainView(ctk.CTkFrame):
                                                     command=self._ouvrir_fenetre_creation_demande)
             bouton_nouvelle_demande.pack(side="left", pady=5, padx=(0, 10))
 
-        bouton_rafraichir = ctk.CTkButton(actions_bar_frame, text="Rafraîchir",
-                                          command=lambda: self.afficher_liste_demandes(force_reload=True), width=120)
-        bouton_rafraichir.pack(side="left", pady=5, padx=10)
+        self.bouton_rafraichir = ctk.CTkButton(actions_bar_frame, text="Rafraîchir (F5)",
+                                               command=lambda: self.afficher_liste_demandes(force_reload=True),
+                                               width=120)
+        self.bouton_rafraichir.pack(side="left", pady=5, padx=10)
+
+        self.notification_badge = ctk.CTkLabel(self.bouton_rafraichir, text="", fg_color="red", corner_radius=8,
+                                               width=18, height=18, font=("Arial", 11, "bold"))
 
         if self.est_admin():
             btn_admin_users = ctk.CTkButton(actions_bar_frame, text="Gérer Utilisateurs",
@@ -237,15 +243,13 @@ class MainView(ctk.CTkFrame):
         self.afficher_liste_demandes(force_reload=False)
 
         new_theme = self.user_data.get("theme_color", "blue")
-        new_appearance = self.user_data.get("appearance_mode", "System")
 
-        if new_theme != self.initial_theme or new_appearance != self.initial_appearance:
+        if new_theme != self.initial_theme:
             self.initial_theme = new_theme
-            self.initial_appearance = new_appearance
             messagebox.showinfo(
                 "Profil Mis à Jour",
                 "Vos informations ont été enregistrées avec succès.\n\n"
-                "Le changement de thème/mode d'apparence sera appliqué au prochain redémarrage de l'application."
+                "Le changement de thème de couleur sera appliqué au prochain redémarrage de l'application."
             )
         else:
             messagebox.showinfo("Succès", "Votre profil a été mis à jour avec succès.")
@@ -308,8 +312,8 @@ class MainView(ctk.CTkFrame):
     def _check_for_data_updates(self):
         try:
             current_mtime = 0
-            if os.path.exists(REMBOURSEMENTS_BASE_DIR):
-                current_mtime = os.path.getmtime(REMBOURSEMENTS_BASE_DIR)
+            if os.path.exists(REMBOURSEMENTS_JSON_DIR):
+                current_mtime = os.path.getmtime(REMBOURSEMENTS_JSON_DIR)
 
             if current_mtime != self._last_known_remboursements_mtime:
                 print(f"{datetime.datetime.now()}: Détection de modifications externes, rafraîchissement forcé...")
@@ -331,6 +335,17 @@ class MainView(ctk.CTkFrame):
             self.after_cancel(self._polling_job_id)
             self._polling_job_id = None
 
+    def _update_notification_badge(self):
+        count = 0
+        if self.all_demandes_cache:
+            count = sum(1 for d in self.all_demandes_cache if self._is_active_for_user(d))
+
+        if count > 0:
+            self.notification_badge.configure(text=str(count))
+            self.notification_badge.place(relx=1.0, rely=0.0, anchor="ne", x=5, y=-5)
+        else:
+            self.notification_badge.place_forget()
+
     def afficher_liste_demandes(self, force_reload: bool = False):
         for widget in self.scrollable_frame_demandes.winfo_children():
             widget.destroy()
@@ -343,8 +358,8 @@ class MainView(ctk.CTkFrame):
             self._fetch_user_data()
             self.all_demandes_cache = self.remboursement_controller.get_toutes_les_demandes_formatees(
                 self.include_archives.get())
-            if os.path.exists(REMBOURSEMENTS_BASE_DIR):
-                self._last_known_remboursements_mtime = os.path.getmtime(REMBOURSEMENTS_BASE_DIR)
+            if os.path.exists(REMBOURSEMENTS_JSON_DIR):
+                self._last_known_remboursements_mtime = os.path.getmtime(REMBOURSEMENTS_JSON_DIR)
             loading_label.destroy()
 
         terme_recherche = self.search_var.get().lower().strip()
@@ -424,6 +439,8 @@ class MainView(ctk.CTkFrame):
                     callbacks=callbacks
                 )
                 item_frame.pack(fill="x", pady=4, padx=5)
+
+        self._update_notification_badge()
 
     def _action_voir_historique_docs(self, demande_data: dict):
         if not demande_data:
@@ -826,3 +843,5 @@ class MainView(ctk.CTkFrame):
 
     def __del__(self):
         self.stop_polling()
+        if self.master:
+            self.master.unbind("<F5>")

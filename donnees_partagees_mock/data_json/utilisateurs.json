@@ -7,8 +7,7 @@
         ],
         "theme_color": "blue",
         "default_filter": "Toutes les demandes",
-        "profile_picture_path": "pfp_p.neri.jpg",
-        "appearance_mode": "Light"
+        "profile_picture_path": null
     },
     "m.lupo": {
         "hashed_password": "$2b$12$VFpfWn7w0rplHZZdiKqTreCeBEY4Y2QQcNNJrfa1jyjXpNi29/cWa",

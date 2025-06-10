@@ -1,10 +1,17 @@
 # controllers/auth_controller.py
 import smtplib
 import ssl
+import os
 from models import user_model
 from utils import password_utils
-from config.settings import ROLES_UTILISATEURS, ASSIGNABLE_ROLES, save_email_config_to_ini, SMTP_CONFIG, \
-    load_smtp_config
+from config.settings import (
+    ROLES_UTILISATEURS,
+    ASSIGNABLE_ROLES,
+    save_email_config_to_ini,
+    SMTP_CONFIG,
+    load_smtp_config,
+    PROFILE_PICTURES_DIR
+)
 
 
 class AuthController:
@@ -33,7 +40,7 @@ class AuthController:
         if not code_reset:
             return False, email_destinataire, "Erreur lors de la génération du code."
 
-        from utils import email_utils  # Import local pour éviter dépendance circulaire
+        from utils import email_utils
         if email_utils.envoyer_email_reset(email_destinataire, nom_utilisateur, code_reset):
             return True, email_destinataire, None
         else:
@@ -63,12 +70,48 @@ class AuthController:
             if not old_password or not password_utils.verifier_mdp(old_password, user.get("hashed_password")):
                 return False, "L'ancien mot de passe est incorrect."
 
+        old_pfp_path = user.get("profile_picture_path")
+        new_pfp_path = preferences.get("profile_picture_path")
+        if old_pfp_path and old_pfp_path != new_pfp_path:
+            try:
+                full_old_path = os.path.join(PROFILE_PICTURES_DIR, old_pfp_path)
+                if os.path.exists(full_old_path):
+                    os.remove(full_old_path)
+                    print(f"Ancienne photo de profil {full_old_path} supprimée.")
+            except OSError as e:
+                print(f"Erreur lors de la suppression de l'ancienne photo de profil : {e}")
+
         return user_model.mettre_a_jour_utilisateur_db(
             login_original=login,
-            nouveau_login=login,  # Le login n'est pas modifiable depuis le profil
+            nouveau_login=login,
             nouvel_email=new_email,
-            nouveaux_roles=user.get('roles', []),  # Les roles ne sont pas modifiables ici
+            nouveaux_roles=user.get('roles', []),
             nouveau_mot_de_passe=new_password,
+            preferences=preferences
+        )
+
+    def remove_user_profile_picture(self, login: str) -> tuple[bool, str]:
+        user = user_model.obtenir_info_utilisateur(login)
+        if not user:
+            return False, "Utilisateur non trouvé."
+
+        old_pfp_path = user.get("profile_picture_path")
+        if old_pfp_path:
+            try:
+                full_old_path = os.path.join(PROFILE_PICTURES_DIR, old_pfp_path)
+                if os.path.exists(full_old_path):
+                    os.remove(full_old_path)
+                    print(f"Ancienne photo de profil {full_old_path} supprimée.")
+            except OSError as e:
+                return False, f"Erreur lors de la suppression du fichier image : {e}"
+
+        preferences = {"profile_picture_path": None}
+        return user_model.mettre_a_jour_utilisateur_db(
+            login_original=login,
+            nouveau_login=login,
+            nouvel_email=user.get("email"),
+            nouveaux_roles=user.get("roles", []),
+            nouveau_mot_de_passe=None,
             preferences=preferences
         )
 

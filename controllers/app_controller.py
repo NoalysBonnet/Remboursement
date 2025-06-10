@@ -85,6 +85,7 @@ class AppController:
 
     def show_main_view(self):
         if self.login_view:
+            self.root.focus_set()
             self.login_view.destroy()
             self.login_view = None
 

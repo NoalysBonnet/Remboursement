@@ -58,9 +58,7 @@ class LoginView(ctk.CTkFrame):
 
         utilisateur_connecte = self.auth_controller.tenter_connexion(nom_utilisateur, mot_de_passe)
         if utilisateur_connecte:
-            # Correction Définitive : On ne lance pas la transition immédiatement.
-            # On la programme pour dans 10ms. Cela laisse le temps à l'événement
-            # du clic de se terminer proprement avant de détruire la fenêtre.
+            self.focus_set()
             self.after(10, lambda: self.on_login_success(utilisateur_connecte))
         else:
             messagebox.showerror("Échec de la connexion", "Nom d'utilisateur ou mot de passe incorrect.",

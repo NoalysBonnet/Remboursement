@@ -95,6 +95,7 @@ def creer_nouvelle_demande(
         return None
 
     now = datetime.datetime.now()
+    now_iso = now.isoformat()
     nouvelle_demande_dict = {
         "id_demande": id_unique_demande,
         "nom": nom.upper() if nom else None,
@@ -107,12 +108,12 @@ def creer_nouvelle_demande(
         "chemins_rib_stockes": chemins_rib_stockes,
         "statut": STATUT_CREEE,
         "cree_par": utilisateur_createur,
-        "date_creation": now,
+        "date_creation": now_iso,
         "derniere_modification_par": utilisateur_createur,
-        "date_derniere_modification": now,
+        "date_derniere_modification": now_iso,
         "historique_statuts": [{
             "statut": STATUT_CREEE,
-            "date": now,
+            "date": now_iso,
             "par": utilisateur_createur,
             "commentaire": description
         }],
