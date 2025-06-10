@@ -2,6 +2,8 @@
 import customtkinter as ctk
 from tkinter import messagebox, simpledialog
 
+from utils.password_utils import check_password_strength
+
 
 class LoginView(ctk.CTkFrame):
     def __init__(self, master, auth_controller, on_login_success_callback):
@@ -13,7 +15,7 @@ class LoginView(ctk.CTkFrame):
         self.creer_widgets_connexion()
 
     def creer_widgets_connexion(self):
-        main_frame = ctk.CTkFrame(self, width=380, height=380,
+        main_frame = ctk.CTkFrame(self, width=380, height=420,
                                   corner_radius=10)
         main_frame.place(relx=0.5, rely=0.5, anchor="center")
 
@@ -27,8 +29,12 @@ class LoginView(ctk.CTkFrame):
 
         self.entry_mdp = ctk.CTkEntry(main_frame, placeholder_text="Mot de passe", show="*",
                                       width=250)
-        self.entry_mdp.pack(pady=10, padx=20)
+        self.entry_mdp.pack(pady=5, padx=20)
         self.entry_mdp.bind("<Return>", lambda event: self._action_connexion())
+
+        self.show_password_var_login = ctk.BooleanVar()
+        ctk.CTkCheckBox(main_frame, text="Afficher le mot de passe", variable=self.show_password_var_login,
+                        command=self._toggle_login_password_visibility).pack(padx=20, pady=(0, 10), anchor="w")
 
         bouton_connexion = ctk.CTkButton(main_frame, text="Se connecter", command=self._action_connexion,
                                          width=200)
@@ -44,8 +50,11 @@ class LoginView(ctk.CTkFrame):
                                           fg_color="gray")
         bouton_mdp_oublie.pack(pady=(6, 30), padx=20)
 
-        # Le focus initial est toujours utile
         self.after(100, self.entry_utilisateur.focus_set)
+
+    def _toggle_login_password_visibility(self):
+        show_char = "" if self.show_password_var_login.get() else "*"
+        self.entry_mdp.configure(show=show_char)
 
     def _action_connexion(self):
         nom_utilisateur = self.entry_utilisateur.get()
@@ -68,7 +77,7 @@ class LoginView(ctk.CTkFrame):
     def _ouvrir_fenetre_modifier_mdp(self):
         dialog = ctk.CTkToplevel(self.master)
         dialog.title("Modifier le mot de passe")
-        dialog.geometry("480x420")
+        dialog.geometry("480x520")
         dialog.transient(self.master)
         dialog.grab_set()
 
@@ -84,9 +93,43 @@ class LoginView(ctk.CTkFrame):
         entry_nouveau_mdp = ctk.CTkEntry(dialog, show="*", width=300, height=30)
         entry_nouveau_mdp.pack(pady=5)
 
+        strength_progress = ctk.CTkProgressBar(dialog, progress_color="grey")
+        strength_progress.set(0)
+        strength_progress.pack(fill="x", padx=90, pady=(5, 2))
+        strength_label = ctk.CTkLabel(dialog, text="", font=ctk.CTkFont(size=12))
+        strength_label.pack(fill="x", padx=90)
+
         ctk.CTkLabel(dialog, text="Confirmer nouveau mot de passe:", font=ctk.CTkFont(size=14)).pack(pady=(10, 0))
         entry_confirm_mdp = ctk.CTkEntry(dialog, show="*", width=300, height=30)
         entry_confirm_mdp.pack(pady=5)
+
+        def _update_strength(event=None):
+            password = entry_nouveau_mdp.get()
+            if not password:
+                strength_label.configure(text="")
+                strength_progress.set(0)
+                return
+            score, feedback = check_password_strength(password)
+            progress = score / 5.0
+            colors = {"Très faible": "#D32F2F", "Faible": "#F44336", "Moyen": "#FFC107", "Fort": "#4CAF50",
+                      "Très fort": "#4CAF50"}
+            color = colors.get(feedback, "grey")
+            strength_progress.set(progress)
+            strength_progress.configure(progress_color=color)
+            strength_label.configure(text=feedback, text_color=color)
+
+        entry_nouveau_mdp.bind("<KeyRelease>", _update_strength)
+
+        show_password_var = ctk.BooleanVar()
+
+        def _toggle_visibility():
+            show_char = "" if show_password_var.get() else "*"
+            entry_ancien_mdp.configure(show=show_char)
+            entry_nouveau_mdp.configure(show=show_char)
+            entry_confirm_mdp.configure(show=show_char)
+
+        ctk.CTkCheckBox(dialog, text="Afficher les mots de passe", variable=show_password_var,
+                        command=_toggle_visibility).pack(pady=10)
 
         def valider_modification():
             user = entry_user.get()
@@ -106,15 +149,16 @@ class LoginView(ctk.CTkFrame):
                                      parent=dialog)
                 return
 
-            if self.auth_controller.modifier_mot_de_passe(user, ancien, nouveau):
-                messagebox.showinfo("Succès", "Mot de passe modifié avec succès.", parent=dialog)
+            success, message = self.auth_controller.modifier_mot_de_passe(user, ancien, nouveau)
+            if success:
+                messagebox.showinfo("Succès", message, parent=dialog)
                 dialog.destroy()
             else:
-                messagebox.showerror("Erreur", "Nom d'utilisateur ou ancien mot de passe incorrect.", parent=dialog)
+                messagebox.showerror("Erreur", message, parent=dialog)
 
         bouton_valider_modif = ctk.CTkButton(dialog, text="Valider la Modification", command=valider_modification,
                                              height=35)
-        bouton_valider_modif.pack(pady=25)
+        bouton_valider_modif.pack(pady=20)
         dialog.after(100, lambda: entry_user.focus_set())
 
     def _ouvrir_fenetre_mdp_oublie_etape1(self):
@@ -146,7 +190,7 @@ class LoginView(ctk.CTkFrame):
     def _ouvrir_fenetre_mdp_oublie_etape2(self, nom_utilisateur_pour_reset):
         dialog = ctk.CTkToplevel(self.master)
         dialog.title("Mot de passe oublié - Étape 2")
-        dialog.geometry("480x400")
+        dialog.geometry("480x480")
         dialog.transient(self.master)
         dialog.grab_set()
 
@@ -164,9 +208,42 @@ class LoginView(ctk.CTkFrame):
         entry_nouveau_mdp = ctk.CTkEntry(dialog, show="*", width=250, height=30)
         entry_nouveau_mdp.pack(pady=5)
 
+        strength_progress = ctk.CTkProgressBar(dialog, progress_color="grey")
+        strength_progress.set(0)
+        strength_progress.pack(fill="x", padx=115, pady=(5, 2))
+        strength_label = ctk.CTkLabel(dialog, text="", font=ctk.CTkFont(size=12))
+        strength_label.pack(fill="x", padx=115)
+
         ctk.CTkLabel(dialog, text="Confirmer nouveau mot de passe:", font=ctk.CTkFont(size=14)).pack(pady=(10, 0))
         entry_confirm_mdp = ctk.CTkEntry(dialog, show="*", width=250, height=30)
         entry_confirm_mdp.pack(pady=5)
+
+        def _update_strength(event=None):
+            password = entry_nouveau_mdp.get()
+            if not password:
+                strength_label.configure(text="")
+                strength_progress.set(0)
+                return
+            score, feedback = check_password_strength(password)
+            progress = score / 5.0
+            colors = {"Très faible": "#D32F2F", "Faible": "#F44336", "Moyen": "#FFC107", "Fort": "#4CAF50",
+                      "Très fort": "#4CAF50"}
+            color = colors.get(feedback, "grey")
+            strength_progress.set(progress)
+            strength_progress.configure(progress_color=color)
+            strength_label.configure(text=feedback, text_color=color)
+
+        entry_nouveau_mdp.bind("<KeyRelease>", _update_strength)
+
+        show_password_var = ctk.BooleanVar()
+
+        def _toggle_visibility():
+            show_char = "" if show_password_var.get() else "*"
+            entry_nouveau_mdp.configure(show=show_char)
+            entry_confirm_mdp.configure(show=show_char)
+
+        ctk.CTkCheckBox(dialog, text="Afficher les mots de passe", variable=show_password_var,
+                        command=_toggle_visibility).pack(pady=10)
 
         def valider_reset():
             code_saisi = entry_code.get()
@@ -195,6 +272,6 @@ class LoginView(ctk.CTkFrame):
 
         bouton_valider_reset = ctk.CTkButton(dialog, text="Réinitialiser le mot de passe", command=valider_reset,
                                              height=35)
-        bouton_valider_reset.pack(pady=25)
+        bouton_valider_reset.pack(pady=20)
 
         dialog.after(100, lambda: entry_code.focus_set())
