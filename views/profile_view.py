@@ -15,7 +15,7 @@ class ProfileView(ctk.CTkToplevel):
         self.transient(master)
         self.grab_set()
         self.title(f"Profil de {current_user}")
-        self.geometry("500x650")
+        self.geometry("500x700")
         self.resizable(False, False)
 
         self.current_user = current_user
@@ -28,7 +28,6 @@ class ProfileView(ctk.CTkToplevel):
         main_frame = ctk.CTkFrame(self)
         main_frame.pack(expand=True, fill="both", padx=20, pady=20)
 
-        # --- Photo de profil ---
         self.pfp_size = 80
         self.pfp_label = ctk.CTkLabel(main_frame, text="", width=self.pfp_size, height=self.pfp_size)
         self.pfp_label.pack(pady=(10, 5))
@@ -36,13 +35,11 @@ class ProfileView(ctk.CTkToplevel):
 
         ctk.CTkButton(main_frame, text="Changer de photo", command=self._select_profile_picture).pack(pady=5)
 
-        # --- Informations ---
         ctk.CTkLabel(main_frame, text="Adresse e-mail:", anchor="w").pack(fill="x", padx=20, pady=(15, 2))
         self.email_entry = ctk.CTkEntry(main_frame)
         self.email_entry.insert(0, user_data.get("email", ""))
         self.email_entry.pack(fill="x", padx=20)
 
-        # --- Changer le mot de passe ---
         ctk.CTkLabel(main_frame, text="Ancien mot de passe:", anchor="w").pack(fill="x", padx=20, pady=(15, 2))
         self.old_password_entry = ctk.CTkEntry(main_frame, show="*")
         self.old_password_entry.pack(fill="x", padx=20)
@@ -52,9 +49,13 @@ class ProfileView(ctk.CTkToplevel):
         self.new_password_entry = ctk.CTkEntry(main_frame, show="*")
         self.new_password_entry.pack(fill="x", padx=20)
 
-        # --- Préférences ---
-        ctk.CTkLabel(main_frame, text="Thème de couleur de l'application:", anchor="w").pack(fill="x", padx=20,
-                                                                                             pady=(15, 2))
+        ctk.CTkLabel(main_frame, text="Mode d'apparence:", anchor="w").pack(fill="x", padx=20, pady=(15, 2))
+        appearance_modes = ["System", "Light", "Dark"]
+        self.appearance_menu = ctk.CTkOptionMenu(main_frame, values=appearance_modes)
+        self.appearance_menu.set(user_data.get("appearance_mode", "System"))
+        self.appearance_menu.pack(fill="x", padx=20)
+
+        ctk.CTkLabel(main_frame, text="Thème de couleur:", anchor="w").pack(fill="x", padx=20, pady=(15, 2))
         themes = ["blue", "dark-blue", "green"]
         self.theme_menu = ctk.CTkOptionMenu(main_frame, values=themes)
         self.theme_menu.set(user_data.get("theme_color", "blue"))
@@ -67,7 +68,6 @@ class ProfileView(ctk.CTkToplevel):
         self.filter_menu.set(user_data.get("default_filter", "Toutes les demandes"))
         self.filter_menu.pack(fill="x", padx=20)
 
-        # --- Boutons ---
         button_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         button_frame.pack(pady=30)
         ctk.CTkButton(button_frame, text="Enregistrer", command=self._save_profile, width=150).pack(side="left",
@@ -94,6 +94,7 @@ class ProfileView(ctk.CTkToplevel):
             draw.text((pfp_size / 2, pfp_size / 2), self.current_user[0].upper(), font=font, anchor="mm")
             ctk_placeholder = ctk.CTkImage(light_image=placeholder, dark_image=placeholder, size=(pfp_size, pfp_size))
             self.pfp_label.configure(image=ctk_placeholder)
+            self.pfp_label.image = ctk_placeholder
 
     def _select_profile_picture(self):
         filepath = filedialog.askopenfilename(
@@ -111,7 +112,7 @@ class ProfileView(ctk.CTkToplevel):
             return self.profile_pic_rel_path
 
         _, extension = os.path.splitext(self.new_profile_pic_source_path)
-        new_filename = f"pfp_{self.current_user}{extension}"
+        new_filename = f"pfp_{self.current_user.lower().replace('.', '_')}{extension}"
         destination_path = os.path.join(PROFILE_PICTURES_DIR, new_filename)
 
         try:
@@ -133,6 +134,7 @@ class ProfileView(ctk.CTkToplevel):
         new_pfp_rel_path = self._handle_picture_save()
 
         updated_prefs = {
+            "appearance_mode": self.appearance_menu.get(),
             "theme_color": self.theme_menu.get(),
             "default_filter": self.filter_menu.get(),
             "profile_picture_path": new_pfp_rel_path
@@ -147,7 +149,6 @@ class ProfileView(ctk.CTkToplevel):
         )
 
         if success:
-            messagebox.showinfo("Succès", "Profil mis à jour avec succès.", parent=self)
             if self.on_save_callback:
                 self.on_save_callback()
             self.destroy()

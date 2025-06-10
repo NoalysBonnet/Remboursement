@@ -51,10 +51,13 @@ class MainView(ctk.CTkFrame):
         self.current_filter = "Toutes les demandes"
         self.current_sort = "Date de création (récent)"
         self.include_archives = ctk.BooleanVar(value=False)
+        self.pfp_size = 80  # Taille de la photo de profil
 
         try:
             self._fetch_user_data()
             self.current_filter = self.user_data.get("default_filter", "Toutes les demandes")
+            self.initial_theme = self.user_data.get("theme_color", "blue")
+            self.initial_appearance = self.user_data.get("appearance_mode", "System")
 
             self.pack(fill="both", expand=True)
             self.main_content_frame = ctk.CTkFrame(self, corner_radius=10)
@@ -119,35 +122,16 @@ class MainView(ctk.CTkFrame):
         top_bar = ctk.CTkFrame(self.main_content_frame, fg_color="transparent")
         top_bar.pack(fill="x", padx=10, pady=(10, 5), anchor="n")
 
-        user_info_frame = ctk.CTkFrame(top_bar, fg_color="transparent")
-        user_info_frame.pack(side="left", padx=5, pady=2)
+        self.user_info_frame = ctk.CTkFrame(top_bar, fg_color="transparent")
+        self.user_info_frame.pack(side="left", padx=5, pady=2)
 
-        pfp_path = self.user_data.get("profile_picture_path")
-        pfp_image = None
-        if pfp_path:
-            full_pfp_path = os.path.join(PROFILE_PICTURES_DIR, pfp_path)
-            if os.path.exists(full_pfp_path):
-                pfp_image = create_circular_image(full_pfp_path, 30)
+        self.pfp_label = ctk.CTkLabel(self.user_info_frame, text="", width=self.pfp_size, height=self.pfp_size)
+        self.pfp_label.pack(side="left")
 
-        if not pfp_image:
-            pfp_size = 30
-            placeholder = Image.new('RGBA', (pfp_size, pfp_size), (80, 80, 80, 255))
-            draw = ImageDraw.Draw(placeholder)
-            try:
-                font = ImageFont.truetype("arial", 18)
-            except IOError:
-                font = ImageFont.load_default()
-            draw.text((pfp_size / 2, pfp_size / 2), self.nom_utilisateur[0].upper(), font=font, anchor="mm")
-            pfp_image = ctk.CTkImage(light_image=placeholder, dark_image=placeholder, size=(pfp_size, pfp_size))
+        self.user_name_label = ctk.CTkLabel(self.user_info_frame, text="", font=ctk.CTkFont(size=18, weight="bold"))
+        self.user_name_label.pack(side="left", padx=15)
 
-        pfp_label = ctk.CTkLabel(user_info_frame, text="", image=pfp_image, width=30, height=30)
-        pfp_label.pack(side="left")
-
-        roles_str = f" (Rôles: {', '.join(self.user_roles)})" if self.user_roles else ""
-        label_accueil = ctk.CTkLabel(user_info_frame,
-                                     text=f"{self.nom_utilisateur}{roles_str}",
-                                     font=ctk.CTkFont(size=12))
-        label_accueil.pack(side="left", padx=10)
+        self._update_user_display()
 
         right_buttons_frame = ctk.CTkFrame(top_bar, fg_color="transparent")
         right_buttons_frame.pack(side="right")
@@ -166,6 +150,31 @@ class MainView(ctk.CTkFrame):
         label_titre_principal = ctk.CTkLabel(self.main_content_frame, text="Tableau de Bord - Remboursements",
                                              font=ctk.CTkFont(size=24, weight="bold"))
         label_titre_principal.pack(pady=(10, 10), anchor="n")
+
+    def _update_user_display(self):
+        pfp_path = self.user_data.get("profile_picture_path")
+        pfp_image = None
+        if pfp_path:
+            full_pfp_path = os.path.join(PROFILE_PICTURES_DIR, pfp_path)
+            if os.path.exists(full_pfp_path):
+                pfp_image = create_circular_image(full_pfp_path, self.pfp_size)
+
+        if not pfp_image:
+            placeholder = Image.new('RGBA', (self.pfp_size, self.pfp_size), (80, 80, 80, 255))
+            draw = ImageDraw.Draw(placeholder)
+            try:
+                font = ImageFont.truetype("arial", 45)
+            except IOError:
+                font = ImageFont.load_default()
+            draw.text((self.pfp_size / 2, self.pfp_size / 2), self.nom_utilisateur[0].upper(), font=font, anchor="mm")
+            pfp_image = ctk.CTkImage(light_image=placeholder, dark_image=placeholder,
+                                     size=(self.pfp_size, self.pfp_size))
+
+        self.pfp_label.configure(image=pfp_image)
+        self.pfp_label.image = pfp_image
+
+        roles_str = f" (Rôles: {', '.join(self.user_roles)})" if self.user_roles else ""
+        self.user_name_label.configure(text=f"{self.nom_utilisateur}{roles_str}")
 
     def creer_section_actions_et_options(self):
         actions_bar_frame = ctk.CTkFrame(self.main_content_frame, fg_color="transparent")
@@ -220,7 +229,26 @@ class MainView(ctk.CTkFrame):
                         on_save_callback=self._on_profile_saved)
 
     def _on_profile_saved(self):
-        self.app_controller.request_restart("Votre profil a été mis à jour.")
+        self._fetch_user_data()
+        self._update_user_display()
+
+        self.current_filter = self.user_data.get("default_filter", "Toutes les demandes")
+        self.filter_menu.set(self.current_filter)
+        self.afficher_liste_demandes(force_reload=False)
+
+        new_theme = self.user_data.get("theme_color", "blue")
+        new_appearance = self.user_data.get("appearance_mode", "System")
+
+        if new_theme != self.initial_theme or new_appearance != self.initial_appearance:
+            self.initial_theme = new_theme
+            self.initial_appearance = new_appearance
+            messagebox.showinfo(
+                "Profil Mis à Jour",
+                "Vos informations ont été enregistrées avec succès.\n\n"
+                "Le changement de thème/mode d'apparence sera appliqué au prochain redémarrage de l'application."
+            )
+        else:
+            messagebox.showinfo("Succès", "Votre profil a été mis à jour avec succès.")
 
     def _ouvrir_fenetre_gestion_utilisateurs(self):
         if self.auth_controller:
@@ -345,14 +373,19 @@ class MainView(ctk.CTkFrame):
             sort_field = {
                 "Date de création (récent)": "date_creation",
                 "Date de création (ancien)": "date_creation",
-                "Montant (croissant)": "montant_demande",
                 "Montant (décroissant)": "montant_demande",
+                "Montant (croissant)": "montant_demande",
                 "Nom du patient (A-Z)": "nom"
             }.get(self.current_sort, "date_creation")
 
             value = demande.get(sort_field)
             if value is None:
-                return datetime.datetime.min if isinstance(demande.get("date_creation"), datetime.datetime) else ""
+                return datetime.datetime.min if "date" in sort_field else ""
+            if "date" in sort_field and isinstance(value, str):
+                try:
+                    return datetime.datetime.fromisoformat(value)
+                except ValueError:
+                    return datetime.datetime.min
             return value
 
         demandes_a_afficher_data = sorted(demandes_filtrees, key=get_sort_key, reverse=reverse_sort)
@@ -700,7 +733,7 @@ class MainView(ctk.CTkFrame):
             "Nom:": "nom",
             "Prénom:": "prenom",
             "Référence Facture:": "reference_facture",
-            "Montant demandé (€):": "montant_demande_()"
+            "Montant demandé (€):": "montant_demande"
         }
         self.entries_demande = {}
 
@@ -769,7 +802,7 @@ class MainView(ctk.CTkFrame):
             nom = self.entries_demande["nom"].get()
             prenom = self.entries_demande["prenom"].get()
             ref = self.entries_demande["reference_facture"].get()
-            montant_str = self.entries_demande["montant_demande_()"].get()
+            montant_str = self.entries_demande["montant_demande"].get()
             description = self.textbox_description.get("1.0", "end-1c").strip()
 
             facture_path = getattr(self, '_entry_chemin_facture_complet', None)

@@ -16,16 +16,14 @@ class AppController:
         self.auth_controller = AuthController()
         self.remboursement_controller = None
         self.current_user = None
+        self.login_view = None
         self.main_view = None
 
-        # Lancer les tâches de fond comme l'archivage
         self._run_startup_tasks()
 
         self.show_login_view()
 
     def _run_startup_tasks(self):
-        # Créer une instance temporaire pour les tâches système
-        # L'archivage est une tâche système, pas besoin d'un utilisateur spécifique
         print("Lancement des tâches de démarrage (archivage...).")
         rc_temp = RemboursementController(utilisateur_actuel="system")
         rc_temp.archive_old_requests()
@@ -40,15 +38,12 @@ class AppController:
 
     def show_login_view(self):
         self.current_user = None
-        # Appliquer un thème par défaut pour l'écran de connexion
+        ctk.set_appearance_mode("System")
         ctk.set_default_color_theme("blue")
 
         if self.main_view:
             self.main_view.destroy()
             self.main_view = None
-
-        for widget in self.root.winfo_children():
-            widget.destroy()
 
         self.login_view = LoginView(self.root, self.auth_controller, self.on_login_success)
         self.root.title("Connexion - Gestion Remboursements")
@@ -71,30 +66,32 @@ class AppController:
 
         is_admin = False
         user_theme = "blue"
+        user_appearance_mode = "System"
 
         if user_info:
             user_roles = user_info.get("roles", [])
             user_theme = user_info.get("theme_color", "blue")
+            user_appearance_mode = user_info.get("appearance_mode", "System")
             if "admin" in user_roles:
                 is_admin = True
 
-        # Appliquer le thème préféré de l'utilisateur
+        ctk.set_appearance_mode(user_appearance_mode)
         ctk.set_default_color_theme(user_theme)
 
-        # On doit recréer la vue principale pour que le thème soit appliqué partout
         self.show_main_view()
 
         if is_admin:
             self.root.after(200, self._show_admin_warning_popup)
 
     def show_main_view(self):
-        for widget in self.root.winfo_children():
-            widget.destroy()
+        if self.login_view:
+            self.login_view.destroy()
+            self.login_view = None
 
         self.main_view = MainView(
             self.root,
             self.current_user,
-            self,  # Passer l'app_controller entier pour les callbacks
+            self,
             self._remboursement_controller_factory
         )
         self.root.title(f"Gestion Remboursements - {self.current_user}")

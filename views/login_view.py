@@ -1,3 +1,4 @@
+# views/login_view.py
 import customtkinter as ctk
 from tkinter import messagebox, simpledialog
 
@@ -43,8 +44,8 @@ class LoginView(ctk.CTkFrame):
                                           fg_color="gray")
         bouton_mdp_oublie.pack(pady=(6, 30), padx=20)
 
-        self.focus_set()
-        self.after(100, lambda: self.entry_utilisateur.focus_set())
+        # Le focus initial est toujours utile
+        self.after(100, self.entry_utilisateur.focus_set)
 
     def _action_connexion(self):
         nom_utilisateur = self.entry_utilisateur.get()
@@ -57,7 +58,10 @@ class LoginView(ctk.CTkFrame):
 
         utilisateur_connecte = self.auth_controller.tenter_connexion(nom_utilisateur, mot_de_passe)
         if utilisateur_connecte:
-            self.on_login_success(utilisateur_connecte)
+            # Correction Définitive : On ne lance pas la transition immédiatement.
+            # On la programme pour dans 10ms. Cela laisse le temps à l'événement
+            # du clic de se terminer proprement avant de détruire la fenêtre.
+            self.after(10, lambda: self.on_login_success(utilisateur_connecte))
         else:
             messagebox.showerror("Échec de la connexion", "Nom d'utilisateur ou mot de passe incorrect.",
                                  parent=self.master)

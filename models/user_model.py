@@ -50,10 +50,12 @@ def mettre_a_jour_utilisateur_db(
     def modification(utilisateurs: dict) -> bool:
         if login_original not in utilisateurs:
             result["message"] = "Utilisateur original non trouvé."
+            result["success"] = False
             return False
 
         if login_original != nouveau_login and nouveau_login in utilisateurs:
             result["message"] = f"Le nouveau login '{nouveau_login}' est déjà utilisé."
+            result["success"] = False
             return False
 
         user_data = utilisateurs.pop(login_original) if login_original != nouveau_login else utilisateurs[
@@ -81,7 +83,8 @@ def mettre_a_jour_utilisateur_db(
         result["message"] = f"Utilisateur '{login_original}' mis à jour avec succès."
         return True
 
-    return read_modify_write_json(USER_DATA_FILE, modification)
+    read_modify_write_json(USER_DATA_FILE, modification)
+    return result["success"], result["message"]
 
 
 def utilisateur_existant(nom_utilisateur: str) -> bool:
