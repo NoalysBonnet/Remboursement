@@ -112,15 +112,19 @@ def creer_demande_data(nouvelle_demande_dict: dict) -> dict | None:
 
 
 def obtenir_demande_par_id_data(id_demande: str) -> dict | None:
-    # Chercher d'abord dans les demandes actives
-    file_path = os.path.join(REMBOURSEMENTS_JSON_DIR, f"{id_demande}.json")
-    if os.path.exists(file_path):
-        return _load_and_validate_demande(file_path)
+    file_path_active = os.path.join(REMBOURSEMENTS_JSON_DIR, f"{id_demande}.json")
+    if os.path.exists(file_path_active):
+        demande = _load_and_validate_demande(file_path_active)
+        if demande:
+            demande['is_archived'] = False
+        return demande
 
-    # Si non trouvé, chercher dans les archives
-    archive_file_path = os.path.join(REMBOURSEMENTS_ARCHIVE_JSON_DIR, f"{id_demande}.json")
-    if os.path.exists(archive_file_path):
-        return _load_and_validate_demande(archive_file_path)
+    file_path_archive = os.path.join(REMBOURSEMENTS_ARCHIVE_JSON_DIR, f"{id_demande}.json")
+    if os.path.exists(file_path_archive):
+        demande = _load_and_validate_demande(file_path_archive)
+        if demande:
+            demande['is_archived'] = True
+        return demande
 
     return None
 
@@ -151,7 +155,6 @@ def ajouter_entree_historique_data(id_demande: str, nouvelle_entree: dict) -> bo
         return False
 
     def modification(demande: dict) -> bool:
-        # Pydantic a déjà initialisé la liste, donc pas besoin de vérifier
         demande["historique_statuts"].append(nouvelle_entree)
         return True
 
@@ -163,7 +166,6 @@ def supprimer_demande_par_id_data(id_demande_a_supprimer: str) -> tuple[bool, st
     if not demande_a_supprimer:
         return False, f"Demande ID {id_demande_a_supprimer} non trouvée."
 
-    # Déterminer si la demande est archivée pour savoir où supprimer les fichiers
     is_archived = demande_a_supprimer.get('is_archived', False)
     json_dir = REMBOURSEMENTS_ARCHIVE_JSON_DIR if is_archived else REMBOURSEMENTS_JSON_DIR
     attachment_dir = REMBOURSEMENTS_ARCHIVE_ATTACHMENTS_DIR if is_archived else REMBOURSEMENTS_ATTACHMENTS_DIR
@@ -198,11 +200,25 @@ def archiver_demande_par_id(id_demande: str) -> bool:
 
     source_json_path = os.path.join(REMBOURSEMENTS_JSON_DIR, f"{id_demande}.json")
     dest_json_path = os.path.join(REMBOURSEMENTS_ARCHIVE_JSON_DIR, f"{id_demande}.json")
+    source_bak_path = source_json_path + ".bak"
+    dest_bak_path = dest_json_path + ".bak"
+    bak_moved = False
+
     if os.path.exists(source_json_path):
         try:
             shutil.move(source_json_path, dest_json_path)
         except Exception as e:
             print(f"Erreur archivage JSON demande {id_demande}: {e}")
+            return False
+
+    if os.path.exists(source_bak_path):
+        try:
+            shutil.move(source_bak_path, dest_bak_path)
+            bak_moved = True
+        except Exception as e:
+            print(f"Erreur archivage fichier .bak demande {id_demande}: {e}")
+            if os.path.exists(dest_json_path):
+                shutil.move(dest_json_path, source_json_path)
             return False
 
     ref_dossier = demande_data.get("reference_facture_dossier")
@@ -216,5 +232,7 @@ def archiver_demande_par_id(id_demande: str) -> bool:
                 print(f"Erreur archivage PJ demande {id_demande}: {e}")
                 if os.path.exists(dest_json_path):
                     shutil.move(dest_json_path, source_json_path)
+                if bak_moved and os.path.exists(dest_bak_path):
+                    shutil.move(dest_bak_path, source_bak_path)
                 return False
     return True
