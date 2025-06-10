@@ -13,7 +13,8 @@ from config.settings import (
     STATUT_VALIDEE, STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO,
     PROFILE_PICTURES_DIR
 )
-from models import user_model
+from models import user_model, remboursement_model
+from utils import archive_utils
 from views.document_viewer import DocumentViewerWindow
 from views.remboursement_item_view import RemboursementItemView
 from views.document_history_viewer import DocumentHistoryViewer
@@ -200,6 +201,11 @@ class MainView(ctk.CTkFrame):
                                             command=self._ouvrir_fenetre_gestion_utilisateurs,
                                             fg_color="#555555", hover_color="#444444")
             btn_admin_users.pack(side="left", pady=5, padx=10)
+
+            btn_purge_archives = ctk.CTkButton(actions_bar_frame, text="Purger les Archives",
+                                               command=self._action_admin_purge_archives,
+                                               fg_color="#9D0208", hover_color="#6A040F")
+            btn_purge_archives.pack(side="left", pady=5, padx=10)
 
         options_frame = ctk.CTkFrame(actions_bar_frame, fg_color="transparent")
         options_frame.pack(side="right", pady=5)
@@ -428,7 +434,8 @@ class MainView(ctk.CTkFrame):
                 'pneri_resoumettre': self._action_pneri_resoumettre,
                 'mlupo_resoumettre_constat': self._action_mlupo_resoumettre_constat,
                 'supprimer_demande': self._action_supprimer_demande,
-                'voir_historique_docs': self._action_voir_historique_docs
+                'voir_historique_docs': self._action_voir_historique_docs,
+                'admin_manual_archive': self._action_admin_manual_archive
             }
             for demande_data in demandes_a_afficher_data:
                 item_frame = RemboursementItemView(
@@ -448,6 +455,50 @@ class MainView(ctk.CTkFrame):
             return
         callbacks_historique = {'voir_pj': self._action_voir_pj, 'dl_pj': self._action_telecharger_pj}
         DocumentHistoryViewer(self, demande_data=demande_data, callbacks=callbacks_historique)
+
+    def _action_admin_manual_archive(self, id_demande: str):
+        if messagebox.askyesno("Archivage Manuel",
+                               f"Êtes-vous sûr de vouloir archiver manuellement la demande {id_demande} ?",
+                               parent=self):
+            succes, msg = self.remboursement_controller.admin_manual_archive(id_demande)
+            if succes:
+                messagebox.showinfo("Succès", msg, parent=self)
+                self.afficher_liste_demandes(force_reload=True)
+            else:
+                messagebox.showerror("Erreur", msg, parent=self)
+
+    def _action_admin_purge_archives(self):
+        age_str = simpledialog.askstring("Purger les Archives",
+                                         "Entrez l'âge minimum (en années) des archives à supprimer.\n"
+                                         "Par exemple, '5' pour supprimer tout ce qui a plus de 5 ans.",
+                                         parent=self)
+        if age_str is None:
+            return
+
+        try:
+            age = int(age_str)
+            if age <= 0:
+                messagebox.showwarning("Invalide", "L'âge doit être un nombre positif.", parent=self)
+                return
+        except (ValueError, TypeError):
+            messagebox.showwarning("Invalide", "Veuillez entrer un nombre entier valide.", parent=self)
+            return
+
+        msg_confirm = (f"Êtes-vous absolument certain de vouloir supprimer TOUTES les archives\n"
+                       f"de plus de {age} an(s) ?\n\n"
+                       f"CETTE ACTION EST DÉFINITIVE ET IRRÉVERSIBLE.")
+
+        if messagebox.askyesno("CONFIRMATION REQUISE", msg_confirm, icon=messagebox.WARNING, parent=self):
+            deleted_count, errors = self.remboursement_controller.admin_purge_archives(age)
+
+            summary_msg = f"{deleted_count} demande(s) archivée(s) ont été supprimée(s)."
+            if errors:
+                summary_msg += f"\n\n{len(errors)} erreur(s) sont survenues :\n" + "\n".join(errors)
+                messagebox.showerror("Purge Terminée avec Erreurs", summary_msg, parent=self)
+            else:
+                messagebox.showinfo("Purge Terminée", summary_msg, parent=self)
+
+            self.afficher_liste_demandes(force_reload=True)
 
     def _action_mlupo_accepter(self, id_demande: str):
         dialog = ctk.CTkToplevel(self)
@@ -714,22 +765,26 @@ class MainView(ctk.CTkFrame):
             else:
                 messagebox.showerror("Erreur de suppression", message, parent=self)
 
-    def _action_voir_pj(self, chemin_pj):
-        if not chemin_pj:
-            messagebox.showwarning("Avertissement", "Aucun chemin de fichier spécifié.", parent=self)
-            return
-        if not os.path.exists(chemin_pj):
-            messagebox.showerror("Erreur", f"Fichier non trouvé : {chemin_pj}", parent=self)
+    def _action_voir_pj(self, demande_id: str, rel_path: str):
+        chemin_pj, temp_dir = self.remboursement_controller.get_viewable_attachment_path(demande_id, rel_path)
+
+        if not chemin_pj or not os.path.exists(chemin_pj):
+            messagebox.showerror("Erreur", f"Fichier non trouvé ou impossible à extraire : {rel_path}", parent=self)
+            if temp_dir:
+                archive_utils.cleanup_temp_dir(temp_dir)
             return
 
-        titre_fenetre = f"Aperçu - {os.path.basename(chemin_pj)}"
-        DocumentViewerWindow(self, chemin_pj, titre_fenetre)
+        titre_fenetre = f"Aperçu - {os.path.basename(rel_path)}"
+        DocumentViewerWindow(self, chemin_pj, titre_fenetre, temp_dir_to_clean=temp_dir)
 
-    def _action_telecharger_pj(self, chemin_pj):
+    def _action_telecharger_pj(self, demande_id: str, rel_path: str):
+        chemin_pj, temp_dir = self.remboursement_controller.get_viewable_attachment_path(demande_id, rel_path)
+
         if not chemin_pj:
             messagebox.showwarning("Avertissement", "Aucun chemin de fichier source spécifié.", parent=self)
             return
-        succes, message = self.remboursement_controller.telecharger_copie_piece_jointe(chemin_pj)
+
+        succes, message = self.remboursement_controller.telecharger_copie_piece_jointe(chemin_pj, temp_dir)
         if succes:
             messagebox.showinfo("Téléchargement", message, parent=self)
         elif "annulé" not in message.lower():
@@ -776,6 +831,9 @@ class MainView(ctk.CTkFrame):
         self._entry_chemin_rib_complet = None
 
         def selectionner_facture():
+            temp_path, _ = self.remboursement_controller.get_viewable_attachment_path(
+                None, self._entry_chemin_facture_complet) if self._entry_chemin_facture_complet else (None, None)
+
             chemin = self.remboursement_controller.selectionner_fichier_document_ou_image(
                 "Sélectionner la Facture (Optionnel)")
             if chemin:
@@ -843,5 +901,6 @@ class MainView(ctk.CTkFrame):
 
     def __del__(self):
         self.stop_polling()
+        archive_utils.cleanup_all_temp_dirs()
         if self.master:
             self.master.unbind("<F5>")

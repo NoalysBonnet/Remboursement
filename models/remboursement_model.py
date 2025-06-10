@@ -9,8 +9,19 @@ from config.settings import REMBOURSEMENTS_ATTACHMENTS_DIR, REMBOURSEMENTS_ARCHI
     STATUT_PAIEMENT_EFFECTUE, STATUT_ANNULEE
 
 
+def obtenir_demande_par_id(id_demande: str):
+    return remboursement_data.obtenir_demande_par_id_data(id_demande)
+
+
 def obtenir_toutes_les_demandes(include_archives: bool = False):
-    return remboursement_data.charger_toutes_les_demandes_data(include_archives)
+    demandes = remboursement_data.charger_toutes_les_demandes_data(include_archives)
+    demandes_formatees = []
+    for demande_data in demandes:
+        demande_data["chemins_factures_stockees"] = demande_data.get("chemins_factures_stockees", [])
+        demande_data["chemins_rib_stockes"] = demande_data.get("chemins_rib_stockes", [])
+        demande_data["pieces_capture_trop_percu"] = demande_data.get("pieces_capture_trop_percu", [])
+        demandes_formatees.append(demande_data)
+    return demandes_formatees
 
 
 def archiver_les_vieilles_demandes() -> int:
@@ -33,6 +44,32 @@ def archiver_les_vieilles_demandes() -> int:
     return count
 
 
+def admin_supprimer_archives_anciennes(age_en_annees: int) -> tuple[int, list[str]]:
+    demandes_supprimees = 0
+    erreurs = []
+
+    cutoff_delta = datetime.timedelta(days=age_en_annees * 365.25)
+    date_limite = datetime.datetime.now() - cutoff_delta
+
+    demandes_archivees = [d for d in obtenir_toutes_les_demandes(include_archives=True) if d.get('is_archived')]
+
+    for demande in demandes_archivees:
+        date_modif = demande.get("date_derniere_modification")
+        if date_modif and isinstance(date_modif, datetime.datetime):
+            if date_modif < date_limite:
+                id_demande = demande.get("id_demande")
+                succes, msg = supprimer_demande_par_id(id_demande)
+                if succes:
+                    demandes_supprimees += 1
+                    print(f"Demande archivée {id_demande} supprimée.")
+                else:
+                    erreurs.append(f"Erreur suppression {id_demande}: {msg}")
+                    print(f"Erreur lors de la suppression de la demande archivée {id_demande}: {msg}")
+
+    return demandes_supprimees, erreurs
+
+
+archiver_demande_par_id = remboursement_data.archiver_demande_par_id
 supprimer_demande_par_id = remboursement_data.supprimer_demande_par_id_data
 ajouter_piece_jointe_trop_percu = remboursement_workflow.ajouter_piece_jointe_trop_percu_action
 accepter_constat_trop_percu = remboursement_workflow.accepter_constat_trop_percu_action
@@ -125,10 +162,15 @@ def creer_nouvelle_demande(
     return remboursement_data.creer_demande_data(nouvelle_demande_dict)
 
 
-def get_chemin_absolu_piece_jointe(chemin_relatif_pj: str | None, is_archived: bool = False) -> str | None:
-    """Construit le chemin absolu vers une pièce jointe à partir de son chemin relatif."""
+def get_chemin_absolu_piece_jointe(chemin_relatif_pj: str | None, is_archived: bool) -> str | None:
     if not chemin_relatif_pj:
         return None
+    base_dir = REMBOURSEMENTS_ATTACHMENTS_DIR
+    if is_archived:
+        return chemin_relatif_pj
 
-    base_dir = REMBOURSEMENTS_ARCHIVE_ATTACHMENTS_DIR if is_archived else REMBOURSEMENTS_ATTACHMENTS_DIR
     return os.path.join(base_dir, chemin_relatif_pj)
+
+
+def get_chemin_absolu_pj_archive_zip(ref_dossier: str) -> str:
+    return os.path.join(REMBOURSEMENTS_ARCHIVE_ATTACHMENTS_DIR, f"{ref_dossier}.zip")

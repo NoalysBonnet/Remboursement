@@ -114,7 +114,6 @@ class RemboursementItemView(ctk.CTkFrame):
         add_basic_info_row("Réf. Facture:", self.demande_data.get('reference_facture', 'N/A'))
         add_basic_info_row("Montant:", f"{self.demande_data.get('montant_demande', 0.0):.2f} €")
 
-        # --- Logique de date corrigée pour 'date_creation' ---
         date_creation_val = self.demande_data.get('date_creation')
         date_creation_formatee = "N/A"
         if isinstance(date_creation_val, datetime.datetime):
@@ -130,7 +129,6 @@ class RemboursementItemView(ctk.CTkFrame):
         add_basic_info_row("Modifiée par:", self.demande_data.get('derniere_modification_par', 'N/A'))
         add_basic_info_row("Statut Actuel:", self.demande_data.get('statut', 'Non défini'))
 
-        # --- Logique de date corrigée pour 'date_paiement_effectue' ---
         date_paiement_val = self.demande_data.get('date_paiement_effectue')
         if date_paiement_val:
             date_paiement_formatee = "N/A"
@@ -161,7 +159,6 @@ class RemboursementItemView(ctk.CTkFrame):
             hist_text_box.configure(state="normal")
             hist_text_box.delete("1.0", "end")
             for entree_hist in reversed(historique):
-                # --- Logique de date corrigée pour les dates de l'historique ---
                 date_hist_val = entree_hist.get('date')
                 date_hist_formatee = "N/A"
                 if isinstance(date_hist_val, datetime.datetime):
@@ -198,67 +195,59 @@ class RemboursementItemView(ctk.CTkFrame):
         btn_pady_action = (3, 3)
         value_font_info = ctk.CTkFont(size=12)
         label_font_info = ctk.CTkFont(weight="bold", size=12)
+        id_demande = self.demande_data.get("id_demande")
 
-        chemins_factures_list = self.demande_data.get("chemins_abs_factures_stockees", [])
-        if not isinstance(chemins_factures_list, list): chemins_factures_list = [
-            chemins_factures_list] if chemins_factures_list else []
+        chemins_factures_rel = self.demande_data.get("chemins_factures_stockees", [])
+        chemins_rib_rel = self.demande_data.get("chemins_rib_stockes", [])
+        chemins_tp_rel = self.demande_data.get("pieces_capture_trop_percu", [])
 
-        chemins_rib_list = self.demande_data.get("chemins_abs_rib_stockes", [])
-        if not isinstance(chemins_rib_list, list): chemins_rib_list = [chemins_rib_list] if chemins_rib_list else []
-
-        chemins_tp_list = self.demande_data.get("chemins_abs_trop_percu", [])
-
-        if any(len(lst) > 1 for lst in [chemins_factures_list, chemins_rib_list, chemins_tp_list]):
+        if any(len(lst) > 1 for lst in [chemins_factures_rel, chemins_rib_rel, chemins_tp_rel]):
             btn_hist_docs = ctk.CTkButton(action_buttons_frame, text="Historique Docs",
                                           width=btn_width_action, fg_color="gray50",
                                           command=lambda d=self.demande_data: self.callbacks['voir_historique_docs'](d))
             btn_hist_docs.pack(pady=(5, btn_pady_action[1]), padx=2, fill="x")
             ctk.CTkFrame(action_buttons_frame, height=2, fg_color="gray50").pack(fill="x", pady=4, padx=15)
 
-        path_facture = chemins_factures_list[-1] if chemins_factures_list and chemins_factures_list[
-            -1] and os.path.exists(chemins_factures_list[-1]) else None
-        path_rib = chemins_rib_list[-1] if chemins_rib_list and chemins_rib_list[-1] and os.path.exists(
-            chemins_rib_list[-1]) else None
-        path_trop_percu = chemins_tp_list[-1] if chemins_tp_list and chemins_tp_list[-1] and os.path.exists(
-            chemins_tp_list[-1]) else None
+        rel_path_facture = chemins_factures_rel[-1] if chemins_factures_rel else None
+        rel_path_rib = chemins_rib_rel[-1] if chemins_rib_rel else None
+        rel_path_trop_percu = chemins_tp_rel[-1] if chemins_tp_rel else None
 
-        if path_facture:
+        if rel_path_facture:
             ctk.CTkButton(action_buttons_frame, text="Voir Facture", width=btn_width_action,
-                          command=lambda p=path_facture: self.callbacks['voir_pj'](p)).pack(pady=btn_pady_action,
-                                                                                            padx=2, fill="x")
+                          command=lambda d=id_demande, p=rel_path_facture: self.callbacks['voir_pj'](d, p)).pack(
+                pady=btn_pady_action, padx=2, fill="x")
             ctk.CTkButton(action_buttons_frame, text="DL Facture", width=btn_width_action,
-                          command=lambda p=path_facture: self.callbacks['dl_pj'](p)).pack(pady=btn_pady_action, padx=2,
-                                                                                          fill="x")
+                          command=lambda d=id_demande, p=rel_path_facture: self.callbacks['dl_pj'](d, p)).pack(
+                pady=btn_pady_action, padx=2, fill="x")
         else:
             ctk.CTkLabel(action_buttons_frame, text="Facture N/A", font=value_font_info, anchor="center",
                          height=30).pack(pady=btn_pady_action, padx=2, fill="x")
 
-        if path_trop_percu:
-            if path_facture:
+        if rel_path_trop_percu:
+            if rel_path_facture:
                 ctk.CTkFrame(action_buttons_frame, height=2, fg_color="gray50").pack(fill="x", pady=4, padx=15)
             ctk.CTkLabel(action_buttons_frame, text="Dernière Preuve TP:", font=label_font_info).pack(anchor="w",
                                                                                                       pady=(5, 0))
             ctk.CTkButton(action_buttons_frame, text="Voir Preuve TP", width=btn_width_action,
-                          command=lambda p=path_trop_percu: self.callbacks['voir_pj'](p)).pack(pady=btn_pady_action,
-                                                                                               padx=2, fill="x")
+                          command=lambda d=id_demande, p=rel_path_trop_percu: self.callbacks['voir_pj'](d, p)).pack(
+                pady=btn_pady_action, padx=2, fill="x")
             ctk.CTkButton(action_buttons_frame, text="DL Preuve TP", width=btn_width_action,
-                          command=lambda p=path_trop_percu: self.callbacks['dl_pj'](p)).pack(pady=btn_pady_action,
-                                                                                             padx=2, fill="x")
+                          command=lambda d=id_demande, p=rel_path_trop_percu: self.callbacks['dl_pj'](d, p)).pack(
+                pady=btn_pady_action, padx=2, fill="x")
 
-        if path_rib:
-            if path_facture or path_trop_percu:
+        if rel_path_rib:
+            if rel_path_facture or rel_path_trop_percu:
                 ctk.CTkFrame(action_buttons_frame, height=2, fg_color="gray50").pack(fill="x", pady=8, padx=15)
             ctk.CTkButton(action_buttons_frame, text="Voir RIB", width=btn_width_action,
-                          command=lambda p=path_rib: self.callbacks['voir_pj'](p)).pack(pady=btn_pady_action, padx=2,
-                                                                                        fill="x")
+                          command=lambda d=id_demande, p=rel_path_rib: self.callbacks['voir_pj'](d, p)).pack(
+                pady=btn_pady_action, padx=2, fill="x")
             ctk.CTkButton(action_buttons_frame, text="DL RIB", width=btn_width_action,
-                          command=lambda p=path_rib: self.callbacks['dl_pj'](p)).pack(pady=btn_pady_action, padx=2,
-                                                                                      fill="x")
-        elif not (path_facture or path_trop_percu):
+                          command=lambda d=id_demande, p=rel_path_rib: self.callbacks['dl_pj'](d, p)).pack(
+                pady=btn_pady_action, padx=2, fill="x")
+        elif not (rel_path_facture or rel_path_trop_percu):
             ctk.CTkLabel(action_buttons_frame, text="RIB N/A", font=value_font_info, anchor="center", height=30).pack(
                 pady=btn_pady_action, padx=2, fill="x")
 
-        id_demande = self.demande_data.get("id_demande")
         statut_actuel = self.demande_data.get("statut")
         has_workflow_buttons = False
 
@@ -309,10 +298,20 @@ class RemboursementItemView(ctk.CTkFrame):
                 ctk.CTkButton(inner_buttons_frame, text=text, width=btn_width_action, fg_color=fg_color,
                               hover_color=hover_color, command=command).pack(side="left", padx=5)
 
+        admin_actions_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
+        admin_actions_frame.grid(row=2, column=0, columnspan=3, pady=(4, 8), sticky="e")
+
         if self._est_admin():
-            admin_actions_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
-            admin_actions_frame.grid(row=2, column=0, columnspan=3, pady=(4, 8), sticky="e")
+            is_archived = self.demande_data.get('is_archived', False)
+            is_finished = statut_actuel in [STATUT_PAIEMENT_EFFECTUE, STATUT_ANNULEE]
+
+            if not is_archived and is_finished:
+                ctk.CTkButton(admin_actions_frame, text="Archiver Manuellement", width=btn_width_action,
+                              fg_color="#6c757d", hover_color="#5a6268",
+                              command=lambda d_id=id_demande: self.callbacks['admin_manual_archive'](d_id)
+                              ).pack(side="right", padx=(5, 5))
+
             ctk.CTkButton(admin_actions_frame, text="Supprimer (Admin)", width=btn_width_action, fg_color="red",
                           hover_color="darkred",
-                          command=lambda demande_id=id_demande: self.callbacks['supprimer_demande'](demande_id)).pack(
-                side="right", padx=(0, 5))
+                          command=lambda demande_id=id_demande: self.callbacks['supprimer_demande'](demande_id)
+                          ).pack(side="right", padx=(0, 5))

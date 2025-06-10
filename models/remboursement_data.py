@@ -4,6 +4,7 @@ import datetime
 import shutil
 import re
 import json
+import zipfile
 from pydantic import ValidationError
 
 from config.settings import REMBOURSEMENTS_ATTACHMENTS_DIR, REMBOURSEMENTS_JSON_DIR, REMBOURSEMENTS_ARCHIVE_JSON_DIR, \
@@ -183,19 +184,27 @@ def supprimer_demande_par_id_data(id_demande_a_supprimer: str) -> tuple[bool, st
 
     ref_dossier = demande_a_supprimer.get("reference_facture_dossier")
     if ref_dossier:
-        chemin_dossier_demande = os.path.join(attachment_dir, ref_dossier)
-        if os.path.exists(chemin_dossier_demande):
-            try:
-                shutil.rmtree(chemin_dossier_demande)
-            except OSError as e:
-                return True, f"Données supprimées, mais échec de la suppression du dossier de PJ : {e}."
+        if is_archived:
+            chemin_pj_a_supprimer = os.path.join(attachment_dir, f"{ref_dossier}.zip")
+            if os.path.exists(chemin_pj_a_supprimer):
+                try:
+                    os.remove(chemin_pj_a_supprimer)
+                except OSError as e:
+                    return True, f"Données supprimées, mais échec de la suppression de l'archive ZIP : {e}."
+        else:
+            chemin_pj_a_supprimer = os.path.join(attachment_dir, ref_dossier)
+            if os.path.exists(chemin_pj_a_supprimer):
+                try:
+                    shutil.rmtree(chemin_pj_a_supprimer)
+                except OSError as e:
+                    return True, f"Données supprimées, mais échec de la suppression du dossier de PJ : {e}."
 
     return True, f"Demande ID {id_demande_a_supprimer} et ses fichiers associés supprimés avec succès."
 
 
 def archiver_demande_par_id(id_demande: str) -> bool:
     demande_data = obtenir_demande_par_id_data(id_demande)
-    if not demande_data:
+    if not demande_data or demande_data.get('is_archived'):
         return False
 
     source_json_path = os.path.join(REMBOURSEMENTS_JSON_DIR, f"{id_demande}.json")
@@ -224,12 +233,19 @@ def archiver_demande_par_id(id_demande: str) -> bool:
     ref_dossier = demande_data.get("reference_facture_dossier")
     if ref_dossier:
         source_attachment_path = os.path.join(REMBOURSEMENTS_ATTACHMENTS_DIR, ref_dossier)
-        dest_attachment_path = os.path.join(REMBOURSEMENTS_ARCHIVE_ATTACHMENTS_DIR, ref_dossier)
-        if os.path.exists(source_attachment_path):
+        dest_zip_path = os.path.join(REMBOURSEMENTS_ARCHIVE_ATTACHMENTS_DIR, f"{ref_dossier}.zip")
+        if os.path.exists(source_attachment_path) and os.path.isdir(source_attachment_path):
             try:
-                shutil.move(source_attachment_path, dest_attachment_path)
+                with zipfile.ZipFile(dest_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    for root, _, files in os.walk(source_attachment_path):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            zipf.write(file_path, os.path.relpath(file_path, source_attachment_path))
+                shutil.rmtree(source_attachment_path)
             except Exception as e:
-                print(f"Erreur archivage PJ demande {id_demande}: {e}")
+                print(f"Erreur lors de la compression des PJ pour la demande {id_demande}: {e}")
+                if os.path.exists(dest_zip_path):
+                    os.remove(dest_zip_path)
                 if os.path.exists(dest_json_path):
                     shutil.move(dest_json_path, source_json_path)
                 if bak_moved and os.path.exists(dest_bak_path):

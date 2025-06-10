@@ -1,6 +1,6 @@
 # controllers/remboursement_controller.py
 from models import remboursement_model
-from utils import pdf_utils
+from utils import pdf_utils, archive_utils
 from tkinter import filedialog
 import os
 import sys
@@ -82,6 +82,25 @@ class RemboursementController:
         else:
             return False, "Erreur lors de la création de la demande dans le modèle."
 
+    def get_viewable_attachment_path(self, demande_id: str, rel_path: str) -> tuple[str | None, str | None]:
+        demande_data = remboursement_model.obtenir_demande_par_id(demande_id)
+        if not demande_data:
+            return None, None
+
+        is_archived = demande_data.get('is_archived', False)
+        if not is_archived:
+            abs_path = remboursement_model.get_chemin_absolu_piece_jointe(rel_path, is_archived=False)
+            return abs_path, None
+        else:
+            ref_dossier = demande_data.get("reference_facture_dossier")
+            if not ref_dossier:
+                return None, None
+
+            zip_archive_path = remboursement_model.get_chemin_absolu_pj_archive_zip(ref_dossier)
+            file_inside_zip = os.path.basename(rel_path)
+
+            return archive_utils.extract_file_to_temp(zip_archive_path, file_inside_zip)
+
     def selectionner_fichier_document_ou_image(self, titre_dialogue="Sélectionner un fichier") -> str | None:
         filetypes = (
             ("Tous les fichiers supportés", "*.pdf *.png *.jpg *.jpeg *.gif *.bmp *.docx *.odt *.txt"),
@@ -100,45 +119,13 @@ class RemboursementController:
 
     def get_toutes_les_demandes_formatees(self, include_archives: bool = False) -> list[dict]:
         demandes = remboursement_model.obtenir_toutes_les_demandes(include_archives)
-        demandes_formatees = []
-        for demande_data in demandes:
-            # Gestion pour 'chemins_factures_stockees' (qui est une liste)
-            abs_factures = []
-            chemins_factures_rel = demande_data.get("chemins_factures_stockees", [])
-            if isinstance(chemins_factures_rel, list):
-                for rel_path in chemins_factures_rel:
-                    abs_path = remboursement_model.get_chemin_absolu_piece_jointe(rel_path, demande_data.get('is_archived', False))
-                    if abs_path: abs_factures.append(abs_path)
-            elif isinstance(chemins_factures_rel, str):
-                abs_path = remboursement_model.get_chemin_absolu_piece_jointe(chemins_factures_rel, demande_data.get('is_archived', False))
-                if abs_path: abs_factures.append(abs_path)
-            demande_data["chemins_abs_factures_stockees"] = abs_factures
+        return demandes
 
-            # Gestion pour 'chemins_rib_stockes' (qui est une liste)
-            abs_ribs = []
-            chemins_rib_rel = demande_data.get("chemins_rib_stockes", [])
-            if isinstance(chemins_rib_rel, list):
-                for rel_path in chemins_rib_rel:
-                    abs_path = remboursement_model.get_chemin_absolu_piece_jointe(rel_path, demande_data.get('is_archived', False))
-                    if abs_path: abs_ribs.append(abs_path)
-            elif isinstance(chemins_rib_rel, str):
-                abs_path = remboursement_model.get_chemin_absolu_piece_jointe(chemins_rib_rel, demande_data.get('is_archived', False))
-                if abs_path: abs_ribs.append(abs_path)
-            demande_data["chemins_abs_rib_stockes"] = abs_ribs
-
-            demande_data["chemins_abs_trop_percu"] = []
-            if demande_data.get("pieces_capture_trop_percu"):
-                for rel_path in demande_data["pieces_capture_trop_percu"]:
-                    abs_path = remboursement_model.get_chemin_absolu_piece_jointe(rel_path, demande_data.get('is_archived', False))
-                    if abs_path:
-                        demande_data["chemins_abs_trop_percu"].append(abs_path)
-
-            demandes_formatees.append(demande_data)
-        # Le tri se fait maintenant dans la vue
-        return demandes_formatees
-
-    def telecharger_copie_piece_jointe(self, chemin_absolu_pj_source: str) -> tuple[bool, str]:
+    def telecharger_copie_piece_jointe(self, chemin_absolu_pj_source: str, temp_dir_to_clean: str | None) -> tuple[
+        bool, str]:
         if not chemin_absolu_pj_source or not os.path.exists(chemin_absolu_pj_source):
+            if temp_dir_to_clean:
+                archive_utils.cleanup_temp_dir(temp_dir_to_clean)
             return False, "Fichier source non trouvé ou chemin invalide."
 
         nom_fichier_original = os.path.basename(chemin_absolu_pj_source)
@@ -154,6 +141,8 @@ class RemboursementController:
             filetypes=filetypes_save
         )
         if not chemin_destination:
+            if temp_dir_to_clean:
+                archive_utils.cleanup_temp_dir(temp_dir_to_clean)
             return False, "Téléchargement annulé par l'utilisateur."
 
         try:
@@ -161,9 +150,22 @@ class RemboursementController:
             return True, f"Fichier enregistré avec succès sous {chemin_destination}"
         except Exception as e:
             return False, f"Erreur lors de l'enregistrement du fichier : {e}"
+        finally:
+            if temp_dir_to_clean:
+                archive_utils.cleanup_temp_dir(temp_dir_to_clean)
 
     def supprimer_demande(self, id_demande: str) -> tuple[bool, str]:
         return remboursement_model.supprimer_demande_par_id(id_demande)
+
+    def admin_manual_archive(self, id_demande: str) -> tuple[bool, str]:
+        succes = remboursement_model.archiver_demande_par_id(id_demande)
+        if succes:
+            return True, f"Demande {id_demande} archivée manuellement."
+        else:
+            return False, "Erreur lors de l'archivage manuel."
+
+    def admin_purge_archives(self, age_en_annees: int) -> tuple[int, list[str]]:
+        return remboursement_model.admin_supprimer_archives_anciennes(age_en_annees)
 
     def mlupo_accepter_constat(
             self,
