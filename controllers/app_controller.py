@@ -38,7 +38,7 @@ class AppController:
 
     def show_login_view(self):
         self.current_user = None
-        ctk.set_appearance_mode("System")
+        ctk.set_appearance_mode("Dark")
         ctk.set_default_color_theme("blue")
 
         if self.main_view:
@@ -66,12 +66,12 @@ class AppController:
 
         is_admin = False
         user_theme = "blue"
-        user_appearance_mode = "System"
+        user_appearance_mode = "Dark"
 
         if user_info:
             user_roles = user_info.get("roles", [])
             user_theme = user_info.get("theme_color", "blue")
-            user_appearance_mode = user_info.get("appearance_mode", "System")
+            user_appearance_mode = user_info.get("appearance_mode", "Dark")
             if "admin" in user_roles:
                 is_admin = True
 
