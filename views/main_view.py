@@ -626,65 +626,124 @@ class MainView(ctk.CTkFrame):
                 messagebox.showerror("Erreur", msg, parent=self)
 
     def _action_pneri_resoumettre(self, id_demande: str):
+        demande_data = self.remboursement_controller.get_demande_by_id(id_demande)
+        if not demande_data:
+            messagebox.showerror("Erreur", "Impossible de charger les données de la demande.", parent=self)
+            return
+
         dialog = ctk.CTkToplevel(self)
         dialog.title(f"Corriger et Resoumettre Demande {id_demande[:8]}")
-        dialog.geometry("600x500")
-        dialog.transient(self);
+        dialog.geometry("600x550")
+        dialog.transient(self)
         dialog.grab_set()
 
-        ctk.CTkLabel(dialog, text="Veuillez fournir les documents mis à jour et un commentaire.").pack(pady=10)
+        main_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        main_frame.pack(expand=True, fill="both", padx=20, pady=10)
 
-        chemin_facture_var = ctk.StringVar(value="Nouvelle Facture: Non sélectionnée (Optionnel)")
+        ctk.CTkLabel(main_frame, text="Veuillez fournir les documents mis à jour et un commentaire.").pack(pady=(0, 15))
+
         new_facture_path = None
+        new_rib_path = None
+        keep_facture_var = ctk.BooleanVar(value=False)
+        keep_rib_var = ctk.BooleanVar(value=False)
+
+        # --- Section Facture ---
+        btn_sel_facture = ctk.CTkButton(main_frame, text="Choisir Nouvelle Facture (Optionnel)")
+        chemin_facture_var = ctk.StringVar(value="Aucun fichier sélectionné")
+        lbl_facture_sel = ctk.CTkLabel(main_frame, textvariable=chemin_facture_var)
+        original_text_color = lbl_facture_sel.cget("text_color")
+
+        btn_sel_facture.pack(anchor="w", padx=20, pady=(5, 2))
+        lbl_facture_sel.pack(anchor="w", padx=20, pady=(0, 5))
+
+        factures_existantes = demande_data.get("chemins_factures_stockees", [])
+        cb_keep_facture = ctk.CTkCheckBox(main_frame, variable=keep_facture_var)
+        if factures_existantes:
+            cb_keep_facture.configure(
+                text=f"Conserver la facture précédente : {os.path.basename(factures_existantes[-1])}")
+        else:
+            cb_keep_facture.configure(text="Pas de facture précédente à conserver", state="disabled")
+        cb_keep_facture.pack(anchor="w", padx=20, pady=(0, 10))
+
+        # --- Section RIB ---
+        btn_sel_rib = ctk.CTkButton(main_frame, text="Choisir Nouveau RIB")
+        chemin_rib_var = ctk.StringVar(value="Aucun fichier sélectionné")
+        lbl_rib_sel = ctk.CTkLabel(main_frame, textvariable=chemin_rib_var)
+
+        btn_sel_rib.pack(anchor="w", padx=20, pady=(5, 2))
+        lbl_rib_sel.pack(anchor="w", padx=20, pady=(0, 5))
+
+        ribs_existants = demande_data.get("chemins_rib_stockes", [])
+        cb_keep_rib = ctk.CTkCheckBox(main_frame, variable=keep_rib_var)
+        if ribs_existants:
+            cb_keep_rib.configure(text=f"Conserver le RIB précédent : {os.path.basename(ribs_existants[-1])}")
+        else:
+            cb_keep_rib.configure(text="Pas de RIB précédent à conserver", state="disabled")
+        cb_keep_rib.pack(anchor="w", padx=20, pady=(0, 10))
+
+        def toggle_facture_ui():
+            nonlocal new_facture_path
+            if keep_facture_var.get():
+                btn_sel_facture.configure(state="disabled")
+                lbl_facture_sel.configure(text_color="gray")
+                new_facture_path = None
+                chemin_facture_var.set("Ancienne facture conservée")
+            else:
+                btn_sel_facture.configure(state="normal")
+                lbl_facture_sel.configure(text_color=original_text_color)
+                chemin_facture_var.set("Aucun fichier sélectionné")
+
+        def toggle_rib_ui():
+            nonlocal new_rib_path
+            if keep_rib_var.get():
+                btn_sel_rib.configure(state="disabled")
+                lbl_rib_sel.configure(text_color="gray")
+                new_rib_path = None
+                chemin_rib_var.set("Ancien RIB conservé")
+            else:
+                btn_sel_rib.configure(state="normal")
+                lbl_rib_sel.configure(text_color=original_text_color)
+                chemin_rib_var.set("Aucun fichier sélectionné")
+
+        cb_keep_facture.configure(command=toggle_facture_ui)
+        cb_keep_rib.configure(command=toggle_rib_ui)
 
         def _sel_new_facture():
             nonlocal new_facture_path
-            path = self.remboursement_controller.selectionner_fichier_document_ou_image(
-                "Nouvelle Facture (Optionnel)")
+            path = self.remboursement_controller.selectionner_fichier_document_ou_image("Nouvelle Facture (Optionnel)")
             if path:
-                chemin_facture_var.set(os.path.basename(path));
                 new_facture_path = path
-            else:
-                chemin_facture_var.set("Nouvelle Facture: Non sélectionnée (Optionnel)");
-                new_facture_path = None
-
-        ctk.CTkButton(dialog, text="Choisir Nouvelle Facture", command=_sel_new_facture).pack(pady=5)
-        ctk.CTkLabel(dialog, textvariable=chemin_facture_var).pack()
-
-        chemin_rib_var = ctk.StringVar(value="Nouveau RIB: Non sélectionné (Obligatoire)")
-        new_rib_path = None
+                chemin_facture_var.set(os.path.basename(path))
 
         def _sel_new_rib():
             nonlocal new_rib_path
-            path = self.remboursement_controller.selectionner_fichier_document_ou_image("Nouveau RIB (Obligatoire)")
+            path = self.remboursement_controller.selectionner_fichier_document_ou_image("Nouveau RIB")
             if path:
-                chemin_rib_var.set(os.path.basename(path));
                 new_rib_path = path
-            else:
-                chemin_rib_var.set("Nouveau RIB: Non sélectionné (Obligatoire)");
-                new_rib_path = None
+                chemin_rib_var.set(os.path.basename(path))
 
-        ctk.CTkButton(dialog, text="Choisir Nouveau RIB", command=_sel_new_rib).pack(pady=5)
-        ctk.CTkLabel(dialog, textvariable=chemin_rib_var).pack()
+        btn_sel_facture.configure(command=_sel_new_facture)
+        btn_sel_rib.configure(command=_sel_new_rib)
 
-        ctk.CTkLabel(dialog, text="Commentaire de correction (Obligatoire):").pack(pady=(10, 0))
-        commentaire_box = ctk.CTkTextbox(dialog, height=80, width=450);
-        commentaire_box.pack(pady=5, padx=10, fill="x", expand=True);
+        ctk.CTkLabel(main_frame, text="Commentaire de correction (Obligatoire):").pack(pady=(15, 0))
+        commentaire_box = ctk.CTkTextbox(main_frame, height=80)
+        commentaire_box.pack(pady=5, padx=20, fill="x", expand=True)
         commentaire_box.focus()
 
         def _submit_correction():
             commentaire = commentaire_box.get("1.0", "end-1c").strip()
-            if not new_rib_path:
-                messagebox.showerror("Erreur", "Un nouveau RIB (ou l'ancien re-sélectionné) est obligatoire.",
-                                     parent=dialog);
+            if not keep_rib_var.get() and not new_rib_path:
+                messagebox.showerror("Erreur", "Un nouveau RIB est obligatoire si vous ne conservez pas l'ancien.",
+                                     parent=dialog)
                 return
             if not commentaire:
                 messagebox.showerror("Erreur", "Un commentaire expliquant la correction est obligatoire.",
-                                     parent=dialog);
+                                     parent=dialog)
                 return
 
             succes, msg = self.remboursement_controller.pneri_resoumettre_demande_corrigee(
-                id_demande, commentaire, new_facture_path, new_rib_path
+                id_demande, commentaire,
+                new_facture_path, new_rib_path
             )
             if succes:
                 messagebox.showinfo("Succès", msg, parent=self)
@@ -696,44 +755,79 @@ class MainView(ctk.CTkFrame):
         ctk.CTkButton(dialog, text="Resoumettre la Demande", command=_submit_correction).pack(pady=20)
 
     def _action_mlupo_resoumettre_constat(self, id_demande: str):
+        demande_data = self.remboursement_controller.get_demande_by_id(id_demande)
+        if not demande_data:
+            messagebox.showerror("Erreur", "Impossible de charger les données de la demande.", parent=self)
+            return
+
         dialog = ctk.CTkToplevel(self)
         dialog.title(f"Corriger Constat TP - Demande {id_demande[:8]}")
         dialog.geometry("500x450")
-        dialog.transient(self);
+        dialog.transient(self)
         dialog.grab_set()
 
-        ctk.CTkLabel(dialog, text="Veuillez fournir une nouvelle preuve et un commentaire.").pack(pady=10)
+        main_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        main_frame.pack(expand=True, fill="both", padx=20, pady=10)
 
-        chemin_pj_var = ctk.StringVar(value="Nouvelle Preuve TP: Non sélectionnée (Obligatoire)")
+        ctk.CTkLabel(main_frame, text="Veuillez fournir une nouvelle preuve et un commentaire.").pack(pady=(0, 15))
+
         new_pj_path = None
+        keep_pj_var = ctk.BooleanVar(value=False)
+
+        btn_sel_pj = ctk.CTkButton(main_frame, text="Choisir Nouvelle Preuve TP")
+        chemin_pj_var = ctk.StringVar(value="Aucun fichier sélectionné")
+        lbl_pj_sel = ctk.CTkLabel(main_frame, textvariable=chemin_pj_var)
+        original_text_color = lbl_pj_sel.cget("text_color")
+
+        btn_sel_pj.pack(anchor="w", padx=20, pady=(5, 2))
+        lbl_pj_sel.pack(anchor="w", padx=20, pady=(0, 5))
+
+        pjs_existantes = demande_data.get("pieces_capture_trop_percu", [])
+        cb_keep_pj = ctk.CTkCheckBox(main_frame, variable=keep_pj_var)
+        if pjs_existantes:
+            cb_keep_pj.configure(text=f"Conserver la preuve précédente : {os.path.basename(pjs_existantes[-1])}")
+        else:
+            cb_keep_pj.configure(text="Pas de preuve précédente à conserver", state="disabled")
+        cb_keep_pj.pack(anchor="w", padx=20, pady=(0, 10))
+
+        def toggle_pj_ui():
+            nonlocal new_pj_path
+            if keep_pj_var.get():
+                btn_sel_pj.configure(state="disabled")
+                lbl_pj_sel.configure(text_color="gray")
+                new_pj_path = None
+                chemin_pj_var.set("Ancienne preuve conservée")
+            else:
+                btn_sel_pj.configure(state="normal")
+                lbl_pj_sel.configure(text_color=original_text_color)
+                chemin_pj_var.set("Aucun fichier sélectionné")
+
+        cb_keep_pj.configure(command=toggle_pj_ui)
 
         def _sel_new_pj_tp():
             nonlocal new_pj_path
-            path = self.remboursement_controller.selectionner_fichier_document_ou_image(
-                "Nouvelle Preuve Trop-Perçu (Obligatoire)")
+            path = self.remboursement_controller.selectionner_fichier_document_ou_image("Nouvelle Preuve Trop-Perçu")
             if path:
-                chemin_pj_var.set(os.path.basename(path));
                 new_pj_path = path
-            else:
-                chemin_pj_var.set("Nouvelle Preuve TP: Non sélectionnée (Obligatoire)");
-                new_pj_path = None
+                chemin_pj_var.set(os.path.basename(path))
 
-        ctk.CTkButton(dialog, text="Choisir Nouvelle Preuve TP", command=_sel_new_pj_tp).pack(pady=5)
-        ctk.CTkLabel(dialog, textvariable=chemin_pj_var).pack()
+        btn_sel_pj.configure(command=_sel_new_pj_tp)
 
-        ctk.CTkLabel(dialog, text="Commentaire de correction (Obligatoire):").pack(pady=(10, 0))
-        commentaire_box = ctk.CTkTextbox(dialog, height=80, width=450);
-        commentaire_box.pack(pady=5, padx=10, fill="x", expand=True);
+        ctk.CTkLabel(main_frame, text="Commentaire de correction (Obligatoire):").pack(pady=(15, 0))
+        commentaire_box = ctk.CTkTextbox(main_frame, height=80)
+        commentaire_box.pack(pady=5, padx=20, fill="x", expand=True)
         commentaire_box.focus()
 
         def _submit_correction_constat():
             commentaire = commentaire_box.get("1.0", "end-1c").strip()
-            if not new_pj_path:
-                messagebox.showerror("Erreur", "Une nouvelle pièce jointe de preuve est obligatoire.", parent=dialog);
+            if not keep_pj_var.get() and not new_pj_path:
+                messagebox.showerror("Erreur",
+                                     "Une nouvelle preuve est obligatoire si vous ne conservez pas l'ancienne.",
+                                     parent=dialog)
                 return
             if not commentaire:
                 messagebox.showerror("Erreur", "Un commentaire expliquant la correction est obligatoire.",
-                                     parent=dialog);
+                                     parent=dialog)
                 return
 
             succes, msg = self.remboursement_controller.mlupo_resoumettre_constat_corrige(

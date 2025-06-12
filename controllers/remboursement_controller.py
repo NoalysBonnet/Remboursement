@@ -82,6 +82,9 @@ class RemboursementController:
         else:
             return False, "Erreur lors de la création de la demande dans le modèle."
 
+    def get_demande_by_id(self, demande_id: str) -> dict | None:
+        return remboursement_model.obtenir_demande_par_id(demande_id)
+
     def get_viewable_attachment_path(self, demande_id: str, rel_path: str) -> tuple[str | None, str | None]:
         demande_data = remboursement_model.obtenir_demande_par_id(demande_id)
         if not demande_data:
@@ -226,11 +229,11 @@ class RemboursementController:
 
     def pneri_resoumettre_demande_corrigee(self, id_demande: str, commentaire: str,
                                            nouveau_chemin_facture: str | None,
-                                           nouveau_chemin_rib: str) -> tuple[bool, str]:
-        if not nouveau_chemin_rib or not os.path.exists(nouveau_chemin_rib):
-            return False, "Un nouveau RIB valide est obligatoire pour la resoumission."
+                                           nouveau_chemin_rib: str | None) -> tuple[bool, str]:
+        if nouveau_chemin_rib and not os.path.exists(nouveau_chemin_rib):
+            return False, f"Nouveau fichier RIB non trouvé : {nouveau_chemin_rib}"
         if nouveau_chemin_facture and not os.path.exists(nouveau_chemin_facture):
-            return False, f"Nouveau fichier facture non trouvé: {nouveau_chemin_facture}"
+            return False, f"Nouveau fichier facture non trouvé : {nouveau_chemin_facture}"
         if not commentaire.strip():
             return False, "Un commentaire expliquant la correction est obligatoire."
 
@@ -241,9 +244,9 @@ class RemboursementController:
         )
 
     def mlupo_resoumettre_constat_corrige(self, id_demande: str, commentaire: str,
-                                          nouveau_chemin_pj_trop_percu: str) -> tuple[bool, str]:
-        if not nouveau_chemin_pj_trop_percu or not os.path.exists(nouveau_chemin_pj_trop_percu):
-            return False, "Une nouvelle preuve de trop-perçu valide est obligatoire."
+                                          nouveau_chemin_pj_trop_percu: str | None) -> tuple[bool, str]:
+        if nouveau_chemin_pj_trop_percu and not os.path.exists(nouveau_chemin_pj_trop_percu):
+            return False, "Fichier de preuve de trop-perçu non trouvé."
         if not commentaire.strip():
             return False, "Un commentaire expliquant la correction est obligatoire."
 

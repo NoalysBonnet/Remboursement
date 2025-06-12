@@ -231,21 +231,26 @@ def confirmer_paiement_action(id_demande: str, utilisateur_pdiop: str, commentai
 
 def pneri_resoumettre_demande_action(id_demande: str, nouveau_commentaire: str,
                                      nouveau_chemin_facture_source: str | None,
-                                     nouveau_chemin_rib_source: str,
+                                     nouveau_chemin_rib_source: str | None,
                                      utilisateur: str) -> tuple[bool, str]:
     demande_actuelle = remboursement_data.obtenir_demande_par_id_data(id_demande)
     if not demande_actuelle: return False, "Demande non trouvée."
     if demande_actuelle.get("statut") != STATUT_REFUSEE_CONSTAT_TP:
         return False, f"La demande n'est pas au statut '{STATUT_REFUSEE_CONSTAT_TP}'."
 
+    if not nouveau_chemin_facture_source and not nouveau_chemin_rib_source:
+        if not nouveau_commentaire or not nouveau_commentaire.strip():
+            return False, "Aucune modification fournie. Veuillez ajouter un commentaire ou de nouveaux fichiers."
+
     if nouveau_chemin_facture_source:
         succes_fact, msg_fact, _ = _ajouter_pj_a_liste(id_demande, nouveau_chemin_facture_source, utilisateur,
                                                        "chemins_factures_stockees", "facture")
         if not succes_fact: return False, msg_fact
 
-    succes_rib, msg_rib, _ = _ajouter_pj_a_liste(id_demande, nouveau_chemin_rib_source, utilisateur,
-                                                 "chemins_rib_stockes", "RIB")
-    if not succes_rib: return False, msg_rib
+    if nouveau_chemin_rib_source:
+        succes_rib, msg_rib, _ = _ajouter_pj_a_liste(id_demande, nouveau_chemin_rib_source, utilisateur,
+                                                     "chemins_rib_stockes", "RIB")
+        if not succes_rib: return False, msg_rib
 
     updates = {
         "statut": STATUT_CREEE,
@@ -268,16 +273,22 @@ def pneri_resoumettre_demande_action(id_demande: str, nouveau_commentaire: str,
 
 
 def mlupo_resoumettre_constat_action(id_demande: str, nouveau_commentaire: str,
-                                     nouveau_chemin_pj_trop_percu_source: str,
+                                     nouveau_chemin_pj_trop_percu_source: str | None,
                                      utilisateur: str) -> tuple[bool, str]:
     demande_actuelle = remboursement_data.obtenir_demande_par_id_data(id_demande)
     if not demande_actuelle: return False, "Demande non trouvée."
     if demande_actuelle.get("statut") != STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO:
         return False, f"La demande n'est pas au statut '{STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO}'."
 
-    succes_pj, msg_pj, _ = ajouter_piece_jointe_trop_percu_action(id_demande, nouveau_chemin_pj_trop_percu_source,
-                                                                  utilisateur)
-    if not succes_pj: return False, msg_pj
+    if not nouveau_chemin_pj_trop_percu_source:
+        if not nouveau_commentaire or not nouveau_commentaire.strip():
+            return False, "Aucune modification fournie. Veuillez ajouter un commentaire ou un nouveau fichier."
+
+    if nouveau_chemin_pj_trop_percu_source:
+        succes_pj, msg_pj, _ = ajouter_piece_jointe_trop_percu_action(id_demande,
+                                                                      nouveau_chemin_pj_trop_percu_source,
+                                                                      utilisateur)
+        if not succes_pj: return False, msg_pj
 
     updates = {
         "statut": STATUT_TROP_PERCU_CONSTATE,
