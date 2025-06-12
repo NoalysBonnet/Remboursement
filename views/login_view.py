@@ -6,29 +6,28 @@ from utils.password_utils import check_password_strength
 
 
 class LoginView(ctk.CTkFrame):
-    def __init__(self, master, auth_controller, on_login_success_callback):
+    # CORRECTION : Le 3ème paramètre est nommé `app_controller` pour la clarté
+    def __init__(self, master, auth_controller, app_controller):
         super().__init__(master, corner_radius=0, fg_color="transparent")
         self.master = master
         self.auth_controller = auth_controller
-        self.on_login_success = on_login_success_callback
+        # CORRECTION : On stocke l'objet AppController entier
+        self.app_controller = app_controller
         self.pack(fill="both", expand=True)
         self.creer_widgets_connexion()
 
     def creer_widgets_connexion(self):
-        main_frame = ctk.CTkFrame(self, width=380, height=420,
-                                  corner_radius=10)
+        main_frame = ctk.CTkFrame(self, width=380, height=420, corner_radius=10)
         main_frame.place(relx=0.5, rely=0.5, anchor="center")
 
         label_titre = ctk.CTkLabel(main_frame, text="Connexion Utilisateur", font=ctk.CTkFont(size=20, weight="bold"))
         label_titre.pack(pady=(30, 15))
 
-        self.entry_utilisateur = ctk.CTkEntry(main_frame, placeholder_text="Nom d'utilisateur",
-                                              width=250)
+        self.entry_utilisateur = ctk.CTkEntry(main_frame, placeholder_text="Nom d'utilisateur", width=250)
         self.entry_utilisateur.pack(pady=10, padx=20)
         self.entry_utilisateur.bind("<Return>", lambda event: self._action_connexion())
 
-        self.entry_mdp = ctk.CTkEntry(main_frame, placeholder_text="Mot de passe", show="*",
-                                      width=250)
+        self.entry_mdp = ctk.CTkEntry(main_frame, placeholder_text="Mot de passe", show="*", width=250)
         self.entry_mdp.pack(pady=5, padx=20)
         self.entry_mdp.bind("<Return>", lambda event: self._action_connexion())
 
@@ -36,18 +35,15 @@ class LoginView(ctk.CTkFrame):
         ctk.CTkCheckBox(main_frame, text="Afficher le mot de passe", variable=self.show_password_var_login,
                         command=self._toggle_login_password_visibility).pack(padx=20, pady=(0, 10), anchor="w")
 
-        bouton_connexion = ctk.CTkButton(main_frame, text="Se connecter", command=self._action_connexion,
-                                         width=200)
+        bouton_connexion = ctk.CTkButton(main_frame, text="Se connecter", command=self._action_connexion, width=200)
         bouton_connexion.pack(pady=10, padx=20)
 
         bouton_modifier_mdp = ctk.CTkButton(main_frame, text="Modifier mon mot de passe",
-                                            command=self._ouvrir_fenetre_modifier_mdp, width=220,
-                                            fg_color="gray")
+                                            command=self._ouvrir_fenetre_modifier_mdp, width=220, fg_color="gray")
         bouton_modifier_mdp.pack(pady=6, padx=20)
 
         bouton_mdp_oublie = ctk.CTkButton(main_frame, text="Mot de passe oublié ?",
-                                          command=self._ouvrir_fenetre_mdp_oublie_etape1, width=220,
-                                          fg_color="gray")
+                                          command=self._ouvrir_fenetre_mdp_oublie_etape1, width=220, fg_color="gray")
         bouton_mdp_oublie.pack(pady=(6, 30), padx=20)
 
         self.after(100, self.entry_utilisateur.focus_set)
@@ -68,13 +64,15 @@ class LoginView(ctk.CTkFrame):
         utilisateur_connecte = self.auth_controller.tenter_connexion(nom_utilisateur, mot_de_passe)
         if utilisateur_connecte:
             self.focus_set()
-            self.after(10, lambda: self.on_login_success(utilisateur_connecte))
+            # CORRECTION : On appelle la méthode .on_login_success() sur l'objet app_controller stocké
+            self.after(10, lambda: self.app_controller.on_login_success(utilisateur_connecte))
         else:
             messagebox.showerror("Échec de la connexion", "Nom d'utilisateur ou mot de passe incorrect.",
                                  parent=self.master)
             self.entry_mdp.delete(0, 'end')
 
     def _ouvrir_fenetre_modifier_mdp(self):
+        # Le reste du fichier est identique et fonctionnel
         dialog = ctk.CTkToplevel(self.master)
         dialog.title("Modifier le mot de passe")
         dialog.geometry("480x520")
@@ -149,12 +147,13 @@ class LoginView(ctk.CTkFrame):
                                      parent=dialog)
                 return
 
-            success, message = self.auth_controller.modifier_mot_de_passe(user, ancien, nouveau)
-            if success:
-                messagebox.showinfo("Succès", message, parent=dialog)
+            if self.auth_controller.modifier_mot_de_passe(user, ancien, nouveau):
+                messagebox.showinfo("Succès", "Mot de passe modifié avec succès.", parent=dialog)
                 dialog.destroy()
             else:
-                messagebox.showerror("Erreur", message, parent=dialog)
+                messagebox.showerror("Erreur",
+                                     "Échec de la modification du mot de passe. Vérifiez votre nom d'utilisateur et votre ancien mot de passe.",
+                                     parent=dialog)
 
         bouton_valider_modif = ctk.CTkButton(dialog, text="Valider la Modification", command=valider_modification,
                                              height=35)
@@ -163,25 +162,20 @@ class LoginView(ctk.CTkFrame):
 
     def _ouvrir_fenetre_mdp_oublie_etape1(self):
         nom_utilisateur = simpledialog.askstring("Mot de passe oublié - Étape 1",
-                                                 "Veuillez entrer votre nom d'utilisateur:",
-                                                 parent=self.master)
-        if not nom_utilisateur:
-            return
+                                                 "Veuillez entrer votre nom d'utilisateur:", parent=self.master)
+        if not nom_utilisateur: return
 
         succes_envoi, email_dest, message = self.auth_controller.demarrer_procedure_reset_mdp(nom_utilisateur)
 
         if succes_envoi:
             messagebox.showinfo("Code envoyé",
-                                f"Un email avec un code de réinitialisation a été envoyé à {email_dest}.\n"
-                                f"Veuillez vérifier votre boîte de réception (et vos spams).",
+                                f"Un email avec un code de réinitialisation a été envoyé à {email_dest}.\nVeuillez vérifier votre boîte de réception (et vos spams).",
                                 parent=self.master)
             self._ouvrir_fenetre_mdp_oublie_etape2(nom_utilisateur)
         else:
             if message and "Code pour test:" in message:
                 messagebox.showwarning("Échec envoi email (Mode Test)",
-                                       f"L'envoi de l'email à {email_dest} a échoué.\n"
-                                       f"{message}",
-                                       parent=self.master)
+                                       f"L'envoi de l'email à {email_dest} a échoué.\n{message}", parent=self.master)
                 self._ouvrir_fenetre_mdp_oublie_etape2(nom_utilisateur)
             else:
                 messagebox.showerror("Erreur", message or "Impossible de démarrer la procédure de réinitialisation.",
@@ -273,5 +267,4 @@ class LoginView(ctk.CTkFrame):
         bouton_valider_reset = ctk.CTkButton(dialog, text="Réinitialiser le mot de passe", command=valider_reset,
                                              height=35)
         bouton_valider_reset.pack(pady=20)
-
         dialog.after(100, lambda: entry_code.focus_set())

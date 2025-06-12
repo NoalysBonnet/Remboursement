@@ -25,6 +25,7 @@ class RemboursementItemView(ctk.CTkFrame):
         self.current_user_name = current_user_name
         self.user_roles = user_roles
         self.callbacks = callbacks
+        self.id_demande = self.demande_data.get("id_demande")
 
         self._setup_item_colors_and_ui()
 
@@ -40,23 +41,27 @@ class RemboursementItemView(ctk.CTkFrame):
     def _est_comptable_fournisseur(self) -> bool:
         return "comptable_fournisseur" in self.user_roles
 
-    def _setup_item_colors_and_ui(self):
-        is_active_for_user = False
+    def _is_active_for_user(self):
         current_status = self.demande_data.get("statut")
         cree_par_user = self.demande_data.get("cree_par")
 
         if self._est_comptable_tresorerie() and current_status == STATUT_CREEE:
-            is_active_for_user = True
-        elif (
+            return True
+        if (
                 self.current_user_name == cree_par_user or self._est_admin()) and current_status == STATUT_REFUSEE_CONSTAT_TP:
-            is_active_for_user = True
-        elif (self._est_validateur_chef() or self._est_admin()) and current_status == STATUT_TROP_PERCU_CONSTATE:
-            is_active_for_user = True
-        elif (
+            return True
+        if (self._est_validateur_chef() or self._est_admin()) and current_status == STATUT_TROP_PERCU_CONSTATE:
+            return True
+        if (
                 self._est_comptable_tresorerie() or self._est_admin()) and current_status == STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO:
-            is_active_for_user = True
-        elif (self._est_comptable_fournisseur() or self._est_admin()) and current_status == STATUT_VALIDEE:
-            is_active_for_user = True
+            return True
+        if (self._est_comptable_fournisseur() or self._est_admin()) and current_status == STATUT_VALIDEE:
+            return True
+        return False
+
+    def _setup_item_colors_and_ui(self):
+        is_active_for_user = self._is_active_for_user()
+        current_status = self.demande_data.get("statut")
 
         item_fg_color_to_set = "transparent"
         border_color_to_set = COULEUR_BORDURE_DEFAUT
@@ -85,15 +90,13 @@ class RemboursementItemView(ctk.CTkFrame):
 
         content_frame.grid_columnconfigure(0, weight=2, minsize=280)
         content_frame.grid_columnconfigure(1, weight=3, minsize=300)
-        content_frame.grid_columnconfigure(2, weight=0, minsize=140)
+        content_frame.grid_columnconfigure(2, weight=0, minsize=180)
 
         basic_info_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
         basic_info_frame.grid(row=0, column=0, sticky="nsew", padx=(8, 5), pady=5)
         basic_info_frame.grid_columnconfigure(1, weight=1)
 
         row_idx_info = 0
-        common_pady_info = (2, 2)
-        common_padx_info = (5, 2)
         label_font_info = ctk.CTkFont(weight="bold", size=12)
         value_font_info = ctk.CTkFont(size=13)
 
@@ -102,216 +105,154 @@ class RemboursementItemView(ctk.CTkFrame):
             ctk.CTkLabel(basic_info_frame, text=label_text, font=label_font_info, anchor="w").grid(row=row_idx_info,
                                                                                                    column=0,
                                                                                                    sticky="nw",
-                                                                                                   padx=common_padx_info,
-                                                                                                   pady=common_pady_info)
+                                                                                                   padx=(5, 2),
+                                                                                                   pady=(2, 2))
             val_label = ctk.CTkLabel(basic_info_frame, text=value_text, font=value_font_info, anchor="w",
                                      justify="left", wraplength=0, text_color=text_color)
-            val_label.grid(row=row_idx_info, column=1, sticky="ew", padx=common_padx_info, pady=common_pady_info)
+            val_label.grid(row=row_idx_info, column=1, sticky="ew", padx=(5, 2), pady=(2, 2))
             row_idx_info += 1
 
         add_basic_info_row("Patient:",
                            f"{self.demande_data.get('nom', 'N/A')} {self.demande_data.get('prenom', 'N/A')}")
         add_basic_info_row("Réf. Facture:", self.demande_data.get('reference_facture', 'N/A'))
         add_basic_info_row("Montant:", f"{self.demande_data.get('montant_demande', 0.0):.2f} €")
-
-        date_creation_val = self.demande_data.get('date_creation')
-        date_creation_formatee = "N/A"
-        if isinstance(date_creation_val, datetime.datetime):
-            date_creation_formatee = date_creation_val.strftime("%d/%m/%Y %H:%M")
-        elif isinstance(date_creation_val, str) and date_creation_val:
-            try:
-                date_creation_obj = datetime.datetime.fromisoformat(date_creation_val)
-                date_creation_formatee = date_creation_obj.strftime("%d/%m/%Y %H:%M")
-            except ValueError:
-                date_creation_formatee = "Date invalide"
-        add_basic_info_row("Créée le:", date_creation_formatee)
-
+        add_basic_info_row("Créée le:", self.demande_data.get('date_creation', 'N/A'))
         add_basic_info_row("Modifiée par:", self.demande_data.get('derniere_modification_par', 'N/A'))
         add_basic_info_row("Statut Actuel:", self.demande_data.get('statut', 'Non défini'))
-
-        date_paiement_val = self.demande_data.get('date_paiement_effectue')
-        if date_paiement_val:
-            date_paiement_formatee = "N/A"
-            if isinstance(date_paiement_val, datetime.datetime):
-                date_paiement_formatee = date_paiement_val.strftime("%d/%m/%Y %H:%M")
-            elif isinstance(date_paiement_val, str):
-                try:
-                    date_paiement_obj = datetime.datetime.fromisoformat(date_paiement_val)
-                    date_paiement_formatee = date_paiement_obj.strftime("%d/%m/%Y %H:%M")
-                except ValueError:
-                    date_paiement_formatee = "Date invalide"
-            add_basic_info_row("Paiement Effectué le:", date_paiement_formatee, text_color="lightgreen")
+        if self.demande_data.get('date_paiement_effectue'):
+            add_basic_info_row("Paiement le:", self.demande_data['date_paiement_effectue'], text_color="lightgreen")
 
         historique_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
         historique_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 5), pady=5)
-
         ctk.CTkLabel(historique_frame, text="Historique/Commentaires:", font=label_font_info).pack(anchor="w",
-                                                                                                   padx=common_padx_info,
                                                                                                    pady=(0, 2))
-
         hist_text_box = ctk.CTkTextbox(historique_frame, height=110, fg_color="gray20", border_width=1,
                                        activate_scrollbars=True)
-        hist_text_box.pack(fill="both", expand=True, padx=common_padx_info, pady=(0, common_pady_info[1]))
-        hist_text_box.configure(state="disabled")
-
+        hist_text_box.pack(fill="both", expand=True, pady=(0, 2))
         historique = self.demande_data.get('historique_statuts', [])
+        hist_text_box.configure(state="normal")
+        hist_text_box.delete("1.0", "end")
         if historique:
-            hist_text_box.configure(state="normal")
-            hist_text_box.delete("1.0", "end")
             for entree_hist in reversed(historique):
-                date_hist_val = entree_hist.get('date')
-                date_hist_formatee = "N/A"
-                if isinstance(date_hist_val, datetime.datetime):
-                    date_hist_formatee = date_hist_val.strftime("%d/%m/%Y %H:%M")
-                elif isinstance(date_hist_val, str) and date_hist_val:
-                    try:
-                        date_hist_obj = datetime.datetime.fromisoformat(date_hist_val)
-                        date_hist_formatee = date_hist_obj.strftime("%d/%m/%Y %H:%M")
-                    except ValueError:
-                        date_hist_formatee = "Date invalide"
-
-                par_hist = entree_hist.get('par', 'Système')
-                statut_hist = entree_hist.get('statut', '')
-                commentaire_hist = entree_hist.get('commentaire', '').strip()
-                hist_text_box.insert("end", f"{date_hist_formatee} - {par_hist}:\n")
-                current_demande_statut = self.demande_data.get('statut')
-                if statut_hist and (
-                        statut_hist != current_demande_statut or len(historique) == 1 or entree_hist == historique[
-                    0]):
-                    hist_text_box.insert("end", f"  Statut: {statut_hist}\n")
-                if commentaire_hist: hist_text_box.insert("end", f"  Commentaire: {commentaire_hist}\n")
+                hist_text_box.insert("end",
+                                     f"{entree_hist.get('date', 'N/A')} - {entree_hist.get('par', 'Système')}:\n")
+                if entree_hist.get('statut'): hist_text_box.insert("end", f"  Statut: {entree_hist.get('statut')}\n")
+                if entree_hist.get('commentaire', '').strip(): hist_text_box.insert("end",
+                                                                                    f"  Commentaire: {entree_hist.get('commentaire').strip()}\n")
                 hist_text_box.insert("end", "----\n")
-            hist_text_box.configure(state="disabled")
         else:
-            hist_text_box.configure(state="normal");
-            hist_text_box.delete("1.0", "end");
-            hist_text_box.insert("end", "Aucun historique.");
-            hist_text_box.configure(state="disabled")
+            hist_text_box.insert("end", "Aucun historique.")
+        hist_text_box.configure(state="disabled")
 
         action_buttons_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
         action_buttons_frame.grid(row=0, column=2, sticky="nsew", padx=(5, 8), pady=5)
-
-        btn_width_action = 120
-        btn_pady_action = (3, 3)
-        value_font_info = ctk.CTkFont(size=12)
-        label_font_info = ctk.CTkFont(weight="bold", size=12)
-        id_demande = self.demande_data.get("id_demande")
-
-        chemins_factures_rel = self.demande_data.get("chemins_factures_stockees", [])
-        chemins_rib_rel = self.demande_data.get("chemins_rib_stockes", [])
-        chemins_tp_rel = self.demande_data.get("pieces_capture_trop_percu", [])
-
-        if any(len(lst) > 1 for lst in [chemins_factures_rel, chemins_rib_rel, chemins_tp_rel]):
-            btn_hist_docs = ctk.CTkButton(action_buttons_frame, text="Historique Docs",
-                                          width=btn_width_action, fg_color="gray50",
-                                          command=lambda d=self.demande_data: self.callbacks['voir_historique_docs'](d))
-            btn_hist_docs.pack(pady=(5, btn_pady_action[1]), padx=2, fill="x")
-            ctk.CTkFrame(action_buttons_frame, height=2, fg_color="gray50").pack(fill="x", pady=4, padx=15)
-
-        rel_path_facture = chemins_factures_rel[-1] if chemins_factures_rel else None
-        rel_path_rib = chemins_rib_rel[-1] if chemins_rib_rel else None
-        rel_path_trop_percu = chemins_tp_rel[-1] if chemins_tp_rel else None
-
-        if rel_path_facture:
-            ctk.CTkButton(action_buttons_frame, text="Voir Facture", width=btn_width_action,
-                          command=lambda d=id_demande, p=rel_path_facture: self.callbacks['voir_pj'](d, p)).pack(
-                pady=btn_pady_action, padx=2, fill="x")
-            ctk.CTkButton(action_buttons_frame, text="DL Facture", width=btn_width_action,
-                          command=lambda d=id_demande, p=rel_path_facture: self.callbacks['dl_pj'](d, p)).pack(
-                pady=btn_pady_action, padx=2, fill="x")
-        else:
-            ctk.CTkLabel(action_buttons_frame, text="Facture N/A", font=value_font_info, anchor="center",
-                         height=30).pack(pady=btn_pady_action, padx=2, fill="x")
-
-        if rel_path_trop_percu:
-            if rel_path_facture:
-                ctk.CTkFrame(action_buttons_frame, height=2, fg_color="gray50").pack(fill="x", pady=4, padx=15)
-            ctk.CTkLabel(action_buttons_frame, text="Dernière Preuve TP:", font=label_font_info).pack(anchor="w",
-                                                                                                      pady=(5, 0))
-            ctk.CTkButton(action_buttons_frame, text="Voir Preuve TP", width=btn_width_action,
-                          command=lambda d=id_demande, p=rel_path_trop_percu: self.callbacks['voir_pj'](d, p)).pack(
-                pady=btn_pady_action, padx=2, fill="x")
-            ctk.CTkButton(action_buttons_frame, text="DL Preuve TP", width=btn_width_action,
-                          command=lambda d=id_demande, p=rel_path_trop_percu: self.callbacks['dl_pj'](d, p)).pack(
-                pady=btn_pady_action, padx=2, fill="x")
-
-        if rel_path_rib:
-            if rel_path_facture or rel_path_trop_percu:
-                ctk.CTkFrame(action_buttons_frame, height=2, fg_color="gray50").pack(fill="x", pady=8, padx=15)
-            ctk.CTkButton(action_buttons_frame, text="Voir RIB", width=btn_width_action,
-                          command=lambda d=id_demande, p=rel_path_rib: self.callbacks['voir_pj'](d, p)).pack(
-                pady=btn_pady_action, padx=2, fill="x")
-            ctk.CTkButton(action_buttons_frame, text="DL RIB", width=btn_width_action,
-                          command=lambda d=id_demande, p=rel_path_rib: self.callbacks['dl_pj'](d, p)).pack(
-                pady=btn_pady_action, padx=2, fill="x")
-        elif not (rel_path_facture or rel_path_trop_percu):
-            ctk.CTkLabel(action_buttons_frame, text="RIB N/A", font=value_font_info, anchor="center", height=30).pack(
-                pady=btn_pady_action, padx=2, fill="x")
+        self._populate_documents_buttons(action_buttons_frame)
 
         statut_actuel = self.demande_data.get("statut")
-        has_workflow_buttons = False
-
-        buttons_to_add = []
-        if self._est_comptable_tresorerie() and statut_actuel == STATUT_CREEE:
-            buttons_to_add.append(
-                ("Accepter (Constat TP)", lambda: self.callbacks['mlupo_accepter'](id_demande), "green", "darkgreen"))
-            buttons_to_add.append(
-                ("Refuser (Constat TP)", lambda: self.callbacks['mlupo_refuser'](id_demande), "orange", "darkorange"))
-            has_workflow_buttons = True
-
-        if (self._est_validateur_chef() or self._est_admin()) and statut_actuel == STATUT_TROP_PERCU_CONSTATE:
-            buttons_to_add.append(
-                ("Valider Demande", lambda: self.callbacks['jdurousset_valider'](id_demande), "blue", "darkblue"))
-            buttons_to_add.append(
-                ("Refuser Demande", lambda: self.callbacks['jdurousset_refuser'](id_demande), "orange", "darkorange"))
-            has_workflow_buttons = True
-
-        if (self._est_comptable_fournisseur() or self._est_admin()) and statut_actuel == STATUT_VALIDEE:
-            buttons_to_add.append(
-                ("Confirmer Paiement", lambda: self.callbacks['pdiop_confirmer_paiement'](id_demande), "#006400",
-                 "#004d00"))
-            has_workflow_buttons = True
-
-        if (self.current_user_name == self.demande_data.get(
-                "cree_par") or self._est_admin()) and statut_actuel == STATUT_REFUSEE_CONSTAT_TP:
-            buttons_to_add.append(
-                ("Corriger Demande", lambda: self.callbacks['pneri_resoumettre'](id_demande), "teal", None))
-            buttons_to_add.append(
-                ("Annuler Demande", lambda: self.callbacks['pneri_annuler'](id_demande), "#D32F2F", "#B71C1C"))
-            has_workflow_buttons = True
-
-        if (
-                self._est_comptable_tresorerie() or self._est_admin()) and statut_actuel == STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO:
-            buttons_to_add.append(
-                ("Corriger Constat TP", lambda: self.callbacks['mlupo_resoumettre_constat'](id_demande), "teal", None))
-            has_workflow_buttons = True
-
-        if has_workflow_buttons:
-            action_buttons_workflow_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
-            action_buttons_workflow_frame.grid(row=1, column=0, columnspan=3, pady=(8, 4), sticky="ew")
-            action_buttons_workflow_frame.grid_columnconfigure(0, weight=1)
-
-            inner_buttons_frame = ctk.CTkFrame(action_buttons_workflow_frame, fg_color="transparent")
+        buttons_to_add = self._get_workflow_buttons(statut_actuel)
+        if buttons_to_add:
+            workflow_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
+            workflow_frame.grid(row=1, column=0, columnspan=3, pady=(8, 4), sticky="ew")
+            workflow_frame.grid_columnconfigure(0, weight=1)
+            inner_buttons_frame = ctk.CTkFrame(workflow_frame, fg_color="transparent")
             inner_buttons_frame.grid(row=0, column=0)
-
+            btn_width_action = 150
             for text, command, fg_color, hover_color in buttons_to_add:
                 ctk.CTkButton(inner_buttons_frame, text=text, width=btn_width_action, fg_color=fg_color,
                               hover_color=hover_color, command=command).pack(side="left", padx=5)
 
-        admin_actions_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
-        admin_actions_frame.grid(row=2, column=0, columnspan=3, pady=(4, 8), sticky="e")
-
         if self._est_admin():
-            is_archived = self.demande_data.get('is_archived', False)
-            is_finished = statut_actuel in [STATUT_PAIEMENT_EFFECTUE, STATUT_ANNULEE]
+            admin_actions_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
+            admin_actions_frame.grid(row=2, column=0, columnspan=3, pady=(4, 8), sticky="e")
+            self._populate_admin_buttons(admin_actions_frame, statut_actuel)
 
-            if not is_archived and is_finished:
-                ctk.CTkButton(admin_actions_frame, text="Archiver Manuellement", width=btn_width_action,
-                              fg_color="#6c757d", hover_color="#5a6268",
-                              command=lambda d_id=id_demande: self.callbacks['admin_manual_archive'](d_id)
-                              ).pack(side="right", padx=(5, 5))
+    def _populate_documents_buttons(self, parent_frame):
+        parent_frame.grid_columnconfigure(0, weight=1)
+        btn_width_action = 140
+        btn_width_dl = 40
 
-            ctk.CTkButton(admin_actions_frame, text="Supprimer (Admin)", width=btn_width_action, fg_color="red",
-                          hover_color="darkred",
-                          command=lambda demande_id=id_demande: self.callbacks['supprimer_demande'](demande_id)
-                          ).pack(side="right", padx=(0, 5))
+        def add_doc_row(label_text, file_list):
+            if not file_list:
+                ctk.CTkLabel(parent_frame, text=f"{label_text}: N/A", font=ctk.CTkFont(size=12, slant="italic")).pack(
+                    fill="x", pady=2, padx=5, anchor="w")
+                return
+
+            ctk.CTkLabel(parent_frame, text=label_text, font=ctk.CTkFont(size=12, weight="bold")).pack(fill="x",
+                                                                                                       pady=(5, 0),
+                                                                                                       padx=5,
+                                                                                                       anchor="w")
+
+            button_frame = ctk.CTkFrame(parent_frame, fg_color="transparent")
+            button_frame.pack(fill="x", expand=True)
+            button_frame.grid_columnconfigure(0, weight=1)
+
+            btn_voir = ctk.CTkButton(button_frame, text="Voir",
+                                     command=lambda p=file_list[-1]: self.callbacks['voir_pj'](self.id_demande, p))
+            btn_voir.grid(row=0, column=0, sticky="ew", padx=(0, 2))
+
+            btn_dl = ctk.CTkButton(button_frame, text="DL", width=btn_width_dl, fg_color="gray50",
+                                   command=lambda p=file_list[-1]: self.callbacks['dl_pj'](self.id_demande, p))
+            btn_dl.grid(row=0, column=1, sticky="e")
+
+        add_doc_row("Facture", self.demande_data.get("chemins_factures_stockees", []))
+        add_doc_row("RIB", self.demande_data.get("chemins_rib_stockes", []))
+        add_doc_row("Preuve TP", self.demande_data.get("pieces_capture_trop_percu", []))
+
+        if any(len(lst) > 1 for lst in [self.demande_data.get(k, []) for k in
+                                        ["chemins_factures_stockees", "chemins_rib_stockes",
+                                         "pieces_capture_trop_percu"]]):
+            ctk.CTkFrame(parent_frame, height=2, fg_color="gray50").pack(fill="x", pady=5, padx=10)
+            ctk.CTkButton(parent_frame, text="Historique des Documents", fg_color="gray50",
+                          command=lambda d=self.demande_data: self.callbacks['voir_historique_docs'](d)).pack(fill="x",
+                                                                                                              padx=2,
+                                                                                                              pady=(5,
+                                                                                                                    0))
+
+    def _get_workflow_buttons(self, statut_actuel):
+        buttons = []
+        id_demande = self.id_demande
+        cree_par = self.demande_data.get("cree_par")
+
+        if self._est_comptable_tresorerie() and statut_actuel == STATUT_CREEE:
+            buttons.append(
+                ("Accepter (Constat TP)", lambda: self.callbacks['mlupo_accepter'](id_demande), "green", "darkgreen"))
+            buttons.append(
+                ("Refuser (Constat TP)", lambda: self.callbacks['mlupo_refuser'](id_demande), "orange", "darkorange"))
+
+        if (self._est_validateur_chef() or self._est_admin()) and statut_actuel == STATUT_TROP_PERCU_CONSTATE:
+            buttons.append(
+                ("Valider Demande", lambda: self.callbacks['jdurousset_valider'](id_demande), "blue", "darkblue"))
+            buttons.append(
+                ("Refuser Demande", lambda: self.callbacks['jdurousset_refuser'](id_demande), "orange", "darkorange"))
+
+        if (self._est_comptable_fournisseur() or self._est_admin()) and statut_actuel == STATUT_VALIDEE:
+            buttons.append(
+                ("Confirmer Paiement", lambda: self.callbacks['pdiop_confirmer_paiement'](id_demande), "#006400",
+                 "#004d00"))
+
+        if (self.current_user_name == cree_par or self._est_admin()) and statut_actuel == STATUT_REFUSEE_CONSTAT_TP:
+            buttons.append(("Corriger Demande", lambda: self.callbacks['pneri_resoumettre'](id_demande), "teal", None))
+            buttons.append(
+                ("Annuler Demande", lambda: self.callbacks['pneri_annuler'](id_demande), "#D32F2F", "#B71C1C"))
+
+        if (
+                self._est_comptable_tresorerie() or self._est_admin()) and statut_actuel == STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO:
+            buttons.append(
+                ("Corriger Constat TP", lambda: self.callbacks['mlupo_resoumettre_constat'](id_demande), "teal", None))
+
+        return buttons
+
+    def _populate_admin_buttons(self, parent_frame, statut_actuel):
+        btn_width_action = 150
+        is_archived = self.demande_data.get('is_archived', False)
+        is_finished = statut_actuel in [STATUT_PAIEMENT_EFFECTUE, STATUT_ANNULEE]
+
+        if not is_archived and is_finished:
+            ctk.CTkButton(parent_frame, text="Archiver Manuellement", width=btn_width_action, fg_color="#6c757d",
+                          hover_color="#5a6268",
+                          command=lambda: self.callbacks['admin_manual_archive'](self.id_demande)).pack(side="right",
+                                                                                                        padx=(5, 5))
+
+        ctk.CTkButton(parent_frame, text="Supprimer (Admin)", width=btn_width_action, fg_color="red",
+                      hover_color="darkred", command=lambda: self.callbacks['supprimer_demande'](self.id_demande)).pack(
+            side="right", padx=(0, 5))

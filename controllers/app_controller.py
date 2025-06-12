@@ -20,7 +20,6 @@ class AppController:
         self.main_view = None
 
         self._run_startup_tasks()
-
         self.show_login_view()
 
     def _run_startup_tasks(self):
@@ -45,37 +44,16 @@ class AppController:
             self.main_view.destroy()
             self.main_view = None
 
-        self.login_view = LoginView(self.root, self.auth_controller, self.on_login_success)
-        self.root.title("Connexion - Gestion Remboursements")
+        # CORRECTION : On passe l'objet AppController entier ('self')
+        self.login_view = LoginView(self.root, self.auth_controller, self)
+        self.root.title("Application de Remboursement - Connexion")
 
-    def _show_admin_warning_popup(self):
-        title = "⚠️ AVERTISSEMENT - COMPTE ADMINISTRATEUR ⚠️"
-        message = (
-            "Vous êtes connecté en tant qu'Administrateur.\n\n"
-            "Ce compte vous confère des privilèges étendus sur l'application, incluant la capacité d'effectuer toutes les actions et de gérer les utilisateurs.\n\n"
-            "**RESPONSABILITÉS ET RISQUES CRITIQUES :**\n\n"
-            "1.  **Suppression de Demandes :** Cette action est **IRRÉVERSIBLE**.\n\n"
-            "2.  **Gestion des Utilisateurs :** La modification ou la suppression d'un compte a un impact direct sur la traçabilité des actions.\n\n"
-            "3.  **Compte 'admin' :** Ne supprimez **JAMAIS** le compte 'admin' principal et ne lui retirez pas son rôle."
-        )
-        messagebox.showwarning(title, message, parent=self.root)
-
-    def on_login_success(self, nom_utilisateur):
+    def on_login_success(self, nom_utilisateur: str):
         self.current_user = nom_utilisateur
         user_info = user_model.obtenir_info_utilisateur(nom_utilisateur)
+        is_admin = "admin" in user_info.get("roles", [])
+        user_theme = user_info.get("theme_color", "blue")
 
-        is_admin = False
-        user_theme = "blue"
-        user_appearance_mode = "Dark"
-
-        if user_info:
-            user_roles = user_info.get("roles", [])
-            user_theme = user_info.get("theme_color", "blue")
-            user_appearance_mode = user_info.get("appearance_mode", "Dark")
-            if "admin" in user_roles:
-                is_admin = True
-
-        ctk.set_appearance_mode(user_appearance_mode)
         ctk.set_default_color_theme(user_theme)
 
         self.show_main_view()
@@ -90,10 +68,10 @@ class AppController:
             self.login_view = None
 
         self.main_view = MainView(
-            self.root,
-            self.current_user,
-            self,
-            self._remboursement_controller_factory
+            master=self.root,
+            nom_utilisateur=self.current_user,
+            app_controller=self,
+            remboursement_controller_factory=self._remboursement_controller_factory
         )
         self.root.title(f"Gestion Remboursements - {self.current_user}")
 
@@ -117,3 +95,7 @@ class AppController:
                                     parent=self.root)
         else:
             self.show_login_view()
+
+    def _show_admin_warning_popup(self):
+        messagebox.showwarning("Mode Administrateur",
+                               "Vous êtes connecté en tant qu'administrateur.\nCertaines actions sont irréversibles.")
