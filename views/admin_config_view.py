@@ -10,8 +10,6 @@ class AdminConfigView(ctk.CTkToplevel):
         self.title("Configuration Email Récupération")
         self.geometry("550x450")
 
-        # master est la fenêtre parente (AdminUserManagementView),
-        # on accède à l'app_controller via elle
         self.app_controller = master.app_controller
         self.auth_controller = auth_controller
         self.config_data = self.auth_controller.get_smtp_config()
@@ -50,7 +48,6 @@ class AdminConfigView(ctk.CTkToplevel):
                                                                                                 padx=10)
 
     def _get_current_values(self):
-        """Récupère les valeurs actuelles des champs d'entrée."""
         return {key: entry.get() for key, entry in self.entries.items()}
 
     def _test_connection(self):
@@ -60,7 +57,7 @@ class AdminConfigView(ctk.CTkToplevel):
             current_config['use_tls'] = current_config.get('use_tls', 'true').lower() in ('true', '1', 't')
             current_config['use_ssl'] = current_config.get('use_ssl', 'false').lower() in ('true', '1', 't')
         except ValueError:
-            messagebox.showerror("Erreur", "Le port doit être un nombre.", parent=self)
+            self.app_controller.show_toast("Le port doit être un nombre.", 'error')
             return
 
         def task():
@@ -69,11 +66,9 @@ class AdminConfigView(ctk.CTkToplevel):
         def on_complete(result):
             is_ok, message = result
             if is_ok:
-                self.app_controller.show_toast("La connexion au serveur SMTP a réussi !")
+                self.app_controller.show_toast("La connexion au serveur SMTP a réussi !", 'success')
             else:
-                messagebox.showerror("Échec de la Connexion",
-                                     f"Impossible de se connecter au serveur SMTP.\n\nErreur : {message}",
-                                     parent=self)
+                self.app_controller.show_toast(f"Échec de la Connexion SMTP.\nErreur : {message}", 'error')
 
         self.app_controller.run_threaded_task(task, on_complete)
 
@@ -86,11 +81,10 @@ class AdminConfigView(ctk.CTkToplevel):
         def on_complete(result):
             success, message = result
             if success:
-                self.app_controller.show_toast("Configuration enregistrée. Redémarrage requis.")
+                self.app_controller.show_toast("Configuration enregistrée. Redémarrage requis.", 'info')
                 self.destroy()
             else:
-                messagebox.showerror("Erreur", f"Impossible d'enregistrer la configuration : {message}",
-                                     parent=self)
+                self.app_controller.show_toast(f"Impossible d'enregistrer la configuration : {message}", 'error')
 
         self.withdraw()
         self.app_controller.run_threaded_task(task, on_complete)

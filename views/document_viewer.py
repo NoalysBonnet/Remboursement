@@ -1,4 +1,3 @@
-# views/document_viewer.py
 import os
 import customtkinter as ctk
 from tkinter import messagebox
@@ -19,6 +18,7 @@ class DocumentViewerWindow(ctk.CTkToplevel):
         self.resizable(True, True)
         self.minsize(400, 300)
 
+        self.master = master
         self.file_path = file_path
         self.pdf_doc = None
         self.temp_dir_to_clean = temp_dir_to_clean
@@ -43,8 +43,8 @@ class DocumentViewerWindow(ctk.CTkToplevel):
             if close_viewer_after:
                 self.destroy()
         except Exception as e_gen:
-            messagebox.showerror("Erreur", f"Impossible d'ouvrir le fichier avec l'application par défaut : {e_gen}",
-                                 parent=self)
+            self.master.app_controller.show_toast(
+                f"Impossible d'ouvrir le fichier avec l'application par défaut : {e_gen}", "error")
 
     def load_and_display_document(self):
         for widget in self.content_container.winfo_children():
@@ -132,7 +132,7 @@ class DocumentViewerWindow(ctk.CTkToplevel):
             print(f"Erreur détaillée DocumentViewer: {e}")
             for widget in self.content_container.winfo_children(): widget.destroy()
 
-            error_message_full = f"Une erreur est survenue lors de la tentative d'affichage du document:\n{e}"
+            error_message_full = f"Une erreur est survenue lors de l'affichage du document:\n{e}"
             error_display_label = ctk.CTkLabel(self.content_container, text=error_message_full, wraplength=380)
             error_display_label.pack(pady=20)
             if not self.winfo_exists(): return

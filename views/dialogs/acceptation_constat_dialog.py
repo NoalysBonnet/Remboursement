@@ -1,6 +1,5 @@
 import os
 import customtkinter as ctk
-from tkinter import messagebox
 
 
 class AcceptationConstatDialog(ctk.CTkToplevel):
@@ -45,10 +44,10 @@ class AcceptationConstatDialog(ctk.CTkToplevel):
         commentaire = self.commentaire_box.get("1.0", "end-1c").strip()
 
         if not self.current_pj_path:
-            messagebox.showerror("Erreur", "La pièce jointe de preuve est obligatoire.", parent=self)
+            self.app_controller.show_toast("La pièce jointe de preuve est obligatoire.", "error")
             return
         if not commentaire:
-            messagebox.showerror("Erreur", "Le commentaire est obligatoire.", parent=self)
+            self.app_controller.show_toast("Le commentaire est obligatoire.", "error")
             return
 
         def combined_task():
@@ -65,9 +64,9 @@ class AcceptationConstatDialog(ctk.CTkToplevel):
 
         def on_complete(result):
             if result['status'] == 'error':
-                messagebox.showerror("Erreur", result['message'], parent=self.master)
+                self.app_controller.show_toast(result['message'], 'error')
             else:
-                self.app_controller.show_toast(result['message'])
+                self.app_controller.show_toast(result['message'], 'success')
                 self.master._render_demandes_list(result['data'])
             self.destroy()
 

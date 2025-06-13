@@ -315,3 +315,38 @@ def mlupo_resoumettre_constat_action(id_demande: str, nouveau_commentaire: str,
         nom_patient = f"{demande_actuelle.get('prenom', '')} {demande_actuelle.get('nom', '')}".strip()
         return True, f"Constat pour {nom_patient} corrigé et resoumis."
     return False, "Erreur lors de la resoumission du constat corrigé."
+
+
+def mlupo_refuser_correction_action(id_demande: str, commentaire: str, utilisateur: str) -> tuple[bool, str]:
+    """
+    Action pour m.lupo de refuser la correction du constat et de renvoyer
+    la demande au demandeur initial (p.neri).
+    """
+    demande_actuelle = remboursement_data.obtenir_demande_par_id_data(id_demande)
+    if not demande_actuelle:
+        return False, "Demande non trouvée."
+
+    if demande_actuelle.get("statut") != STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO:
+        return False, f"L'action n'est pas possible depuis le statut '{demande_actuelle.get('statut')}'."
+
+    updates = {
+        "statut": STATUT_REFUSEE_CONSTAT_TP,
+        "derniere_modification_par": utilisateur,
+        "date_derniere_modification": datetime.datetime.now().isoformat()
+    }
+
+    nouvelle_entree_historique = {
+        "statut": STATUT_REFUSEE_CONSTAT_TP,
+        "date": updates["date_derniere_modification"],
+        "par": utilisateur,
+        "commentaire": f"Correction refusée et renvoyée au demandeur : {commentaire}"
+    }
+
+    succes_maj_demande = remboursement_data.mettre_a_jour_demande_data(id_demande, updates)
+    succes_hist = remboursement_data.ajouter_entree_historique_data(id_demande, nouvelle_entree_historique)
+
+    if succes_maj_demande and succes_hist:
+        nom_patient = f"{demande_actuelle.get('prenom', '')} {demande_actuelle.get('nom', '')}".strip()
+        return True, f"Demande pour {nom_patient} renvoyée au demandeur."
+
+    return False, "Erreur lors du renvoi de la demande au demandeur."

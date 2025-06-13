@@ -1,5 +1,4 @@
 import customtkinter as ctk
-from tkinter import messagebox
 
 
 class PasswordResetView(ctk.CTkToplevel):
@@ -47,7 +46,7 @@ class PasswordResetView(ctk.CTkToplevel):
     def _handle_step1(self):
         username = self.username_entry.get()
         if not username:
-            messagebox.showwarning("Champ requis", "Veuillez saisir votre nom d'utilisateur.", parent=self)
+            self.app_controller.show_toast("Veuillez saisir votre nom d'utilisateur.", "warning")
             return
 
         def task():
@@ -57,10 +56,10 @@ class PasswordResetView(ctk.CTkToplevel):
             success, message = result
             if success:
                 self.username_to_reset = username
-                self.app_controller.show_toast(message)
+                self.app_controller.show_toast(message, 'success')
                 self._setup_step2()
             else:
-                messagebox.showerror("Erreur", message, parent=self)
+                self.app_controller.show_toast(message, 'error')
 
         self.app_controller.run_threaded_task(task, on_complete)
 
@@ -99,11 +98,11 @@ class PasswordResetView(ctk.CTkToplevel):
         confirm_password = self.confirm_password_entry.get()
 
         if not all([code, new_password, confirm_password]):
-            messagebox.showwarning("Champs requis", "Veuillez remplir tous les champs.", parent=self)
+            self.app_controller.show_toast("Veuillez remplir tous les champs.", "warning")
             return
 
         if new_password != confirm_password:
-            messagebox.showerror("Erreur", "Les mots de passe ne correspondent pas.", parent=self)
+            self.app_controller.show_toast("Les mots de passe ne correspondent pas.", "error")
             return
 
         def task():
@@ -112,10 +111,10 @@ class PasswordResetView(ctk.CTkToplevel):
         def on_complete(result):
             success, message = result
             if success:
-                self.app_controller.show_toast(message)
+                self.app_controller.show_toast(message, 'success')
                 self.destroy()
             else:
-                messagebox.showerror("Erreur", message, parent=self)
+                self.app_controller.show_toast(message, 'error')
 
         self.withdraw()
         self.app_controller.run_threaded_task(task, on_complete)

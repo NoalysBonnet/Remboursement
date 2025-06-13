@@ -1,6 +1,5 @@
 import os
 import customtkinter as ctk
-from tkinter import messagebox
 
 
 class ResoumissionDemandeDialog(ctk.CTkToplevel):
@@ -32,7 +31,7 @@ class ResoumissionDemandeDialog(ctk.CTkToplevel):
 
         def on_complete(demande_data):
             if not demande_data:
-                messagebox.showerror("Erreur", "Impossible de charger les données de la demande.", parent=self.master)
+                self.app_controller.show_toast("Impossible de charger les données de la demande.", "error")
                 self.destroy()
                 return
             self._build_ui(demande_data)
@@ -122,13 +121,11 @@ class ResoumissionDemandeDialog(ctk.CTkToplevel):
     def _submit_correction(self):
         commentaire = self.commentaire_box.get("1.0", "end-1c").strip()
         if not self.keep_rib_var.get() and not self.new_rib_path:
-            messagebox.showerror("Erreur",
-                                 "Un nouveau RIB est obligatoire si vous ne conservez pas l'ancien.",
-                                 parent=self)
+            self.app_controller.show_toast("Un nouveau RIB est obligatoire si vous ne conservez pas l'ancien.",
+                                           "error")
             return
         if not commentaire:
-            messagebox.showerror("Erreur",
-                                 "Un commentaire expliquant la correction est obligatoire.", parent=self)
+            self.app_controller.show_toast("Un commentaire expliquant la correction est obligatoire.", "error")
             return
 
         def combined_task():
@@ -143,9 +140,9 @@ class ResoumissionDemandeDialog(ctk.CTkToplevel):
 
         def on_complete(result):
             if result['status'] == 'error':
-                messagebox.showerror("Erreur", result['message'], parent=self.master)
+                self.app_controller.show_toast(result['message'], 'error')
             else:
-                self.app_controller.show_toast(result['message'])
+                self.app_controller.show_toast(result['message'], 'success')
                 self.master._render_demandes_list(result['data'])
             self.destroy()
 

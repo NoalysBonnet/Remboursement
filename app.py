@@ -1,4 +1,3 @@
-# app.py
 import customtkinter as ctk
 import os
 import sys

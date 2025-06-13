@@ -35,8 +35,9 @@ def archiver_les_vieilles_demandes() -> int:
     for demande in demandes_actives:
         statut = demande.get("statut")
         if statut in [STATUT_PAIEMENT_EFFECTUE, STATUT_ANNULEE]:
-            date_modif = demande.get("date_derniere_modification")
-            if date_modif and isinstance(date_modif, datetime.datetime):
+            date_modif_str = demande.get("date_derniere_modification")
+            if date_modif_str:
+                date_modif = datetime.datetime.fromisoformat(date_modif_str)
                 if (now - date_modif) > douze_mois:
                     print(f"Archivage de la demande {demande['id_demande']}...")
                     if remboursement_data.archiver_demande_par_id(demande['id_demande']):
@@ -54,8 +55,9 @@ def admin_supprimer_archives_anciennes(age_en_annees: int) -> tuple[int, list[st
     demandes_archivees = [d for d in obtenir_toutes_les_demandes(include_archives=True) if d.get('is_archived')]
 
     for demande in demandes_archivees:
-        date_modif = demande.get("date_derniere_modification")
-        if date_modif and isinstance(date_modif, datetime.datetime):
+        date_modif_str = demande.get("date_derniere_modification")
+        if date_modif_str:
+            date_modif = datetime.datetime.fromisoformat(date_modif_str)
             if date_modif < date_limite:
                 id_demande = demande.get("id_demande")
                 succes, msg = supprimer_demande_par_id(id_demande)
@@ -80,6 +82,7 @@ refuser_demande_par_validateur = remboursement_workflow.refuser_demande_par_vali
 confirmer_paiement_effectue = remboursement_workflow.confirmer_paiement_action
 pneri_resoumettre_demande_corrigee = remboursement_workflow.pneri_resoumettre_demande_action
 mlupo_resoumettre_constat_corrige = remboursement_workflow.mlupo_resoumettre_constat_action
+mlupo_refuser_correction = remboursement_workflow.mlupo_refuser_correction_action
 
 
 def creer_nouvelle_demande(
@@ -167,6 +170,7 @@ def get_chemin_absolu_piece_jointe(chemin_relatif_pj: str | None, is_archived: b
         return None
     base_dir = REMBOURSEMENTS_ATTACHMENTS_DIR
     if is_archived:
+        # For archived, the path is already absolute to the zip content, handled by archive_utils
         return chemin_relatif_pj
 
     return os.path.join(base_dir, chemin_relatif_pj)

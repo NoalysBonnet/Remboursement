@@ -158,13 +158,13 @@ class ProfileView(ctk.CTkToplevel):
             def on_complete(result):
                 success, message = result
                 if success:
-                    self.app_controller.show_toast("Photo de profil supprimée.")
+                    self.app_controller.show_toast("Photo de profil supprimée.", 'success')
                     self.profile_pic_rel_path = None
                     self.load_profile_picture()
                     if self.on_save_callback:
                         self.on_save_callback()
                 else:
-                    messagebox.showerror("Erreur", message, parent=self)
+                    self.app_controller.show_toast(message, 'error')
 
             self.app_controller.run_threaded_task(task, on_complete)
 
@@ -180,8 +180,7 @@ class ProfileView(ctk.CTkToplevel):
             shutil.copy2(self.new_profile_pic_source_path, destination_path)
             return new_filename
         except Exception as e:
-            messagebox.showerror("Erreur", f"Impossible d'enregistrer la photo de profil : {e}",
-                                 parent=self)
+            self.app_controller.show_toast(f"Impossible d'enregistrer la photo de profil : {e}", "error")
             return self.profile_pic_rel_path
 
     def _save_profile(self):
@@ -190,9 +189,7 @@ class ProfileView(ctk.CTkToplevel):
         new_password = self.new_password_entry.get()
 
         if new_password and not old_password:
-            messagebox.showerror("Erreur",
-                                 "Veuillez entrer votre ancien mot de passe pour le modifier.",
-                                 parent=self)
+            self.app_controller.show_toast("Veuillez entrer votre ancien mot de passe pour le modifier.", "error")
             return
 
         def task():
@@ -215,10 +212,10 @@ class ProfileView(ctk.CTkToplevel):
             if success:
                 if self.on_save_callback:
                     self.on_save_callback()
-                self.app_controller.show_toast("Profil enregistré avec succès.")
+                self.app_controller.show_toast("Profil enregistré avec succès.", 'success')
+                self.destroy()
             else:
-                messagebox.showerror("Erreur", message, parent=self.master)
-            self.destroy()
+                self.app_controller.show_toast(message, 'error')
 
         self.withdraw()
         self.app_controller.run_threaded_task(task, on_complete)

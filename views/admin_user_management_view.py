@@ -136,10 +136,10 @@ class AdminUserManagementView(ctk.CTkToplevel):
             def on_complete(result):
                 succes, message = result
                 if succes:
-                    self.app_controller.show_toast(message)
+                    self.app_controller.show_toast(message, 'success')
                     self.populate_user_list()
                 else:
-                    messagebox.showerror("Erreur de Suppression", message, parent=self)
+                    self.app_controller.show_toast(message, 'error')
 
             self.app_controller.run_threaded_task(task, on_complete)
 
@@ -219,11 +219,11 @@ class AdminUserManagementView(ctk.CTkToplevel):
             def on_complete(result):
                 succes, message = result
                 if succes:
-                    self.app_controller.show_toast(message)
+                    self.app_controller.show_toast(message, 'success')
                     self.populate_user_list()
                     dialog.destroy()
                 else:
-                    messagebox.showerror("Erreur", message, parent=dialog)
+                    self.app_controller.show_toast(message, 'error')
 
             dialog.withdraw()
             self.app_controller.run_threaded_task(task, on_complete)

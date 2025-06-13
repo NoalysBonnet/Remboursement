@@ -394,7 +394,7 @@ class MainView(ctk.CTkFrame):
                 DocumentViewerWindow(self, chemin_pj, f"Aperçu - {os.path.basename(rel_path)}",
                                      temp_dir_to_clean=temp_dir)
             else:
-                messagebox.showerror("Erreur", f"Fichier non trouvé : {rel_path}", parent=self)
+                self.app_controller.show_toast(f"Fichier non trouvé : {rel_path}", "error")
                 if temp_dir: archive_utils.cleanup_temp_dir(temp_dir)
 
         self.app_controller.run_threaded_task(task, on_complete)
@@ -406,14 +406,14 @@ class MainView(ctk.CTkFrame):
         def on_complete(result):
             chemin_pj, temp_dir = result
             if not chemin_pj:
-                messagebox.showerror("Erreur", f"Fichier non trouvé ou impossible à extraire : {rel_path}", parent=self)
+                self.app_controller.show_toast(f"Fichier non trouvé ou impossible à extraire : {rel_path}", "error")
                 return
 
             succes, message = self.remboursement_controller.telecharger_copie_piece_jointe(chemin_pj, temp_dir)
             if succes:
-                self.app_controller.show_toast(message)
+                self.app_controller.show_toast(message, 'success')
             elif "annulé" not in message.lower():
-                messagebox.showerror("Erreur", message, parent=self)
+                self.app_controller.show_toast(message, 'error')
 
         self.app_controller.run_threaded_task(task, on_complete)
 
@@ -432,9 +432,9 @@ class MainView(ctk.CTkFrame):
 
         def on_complete(result):
             if result['status'] == 'error':
-                messagebox.showerror("Erreur", result['message'], parent=self)
+                self.app_controller.show_toast(result['message'], 'error')
             else:
-                self.app_controller.show_toast(result['message'])
+                self.app_controller.show_toast(result['message'], 'success')
                 self._render_demandes_list(result['data'])
             self._is_refreshing = False
 
@@ -518,13 +518,13 @@ class MainView(ctk.CTkFrame):
                         return {'message': msg, 'data': data}
 
                     def on_complete(result):
-                        self.app_controller.show_toast(result['message'])
+                        self.app_controller.show_toast(result['message'], 'info')
                         self._render_demandes_list(result['data'])
                         self._is_refreshing = False
 
                     self.app_controller.run_threaded_task(combined_task, on_complete)
             except ValueError:
-                messagebox.showerror("Erreur", "Veuillez entrer un nombre valide.", parent=self)
+                self.app_controller.show_toast("Veuillez entrer un nombre valide.", "error")
 
     def _action_voir_historique_docs(self, demande_data):
         DocumentHistoryViewer(self, demande_data=demande_data, callbacks=self.callbacks)

@@ -46,30 +46,76 @@ class LoadingOverlay(ctk.CTkFrame):
 
 class ToastNotification(ctk.CTkFrame):
     """
-    Un widget de notification "toast" qui s'affiche et disparaît automatiquement.
+    Représente un seul widget de notification. Il est géré par le ToastManager.
+    """
+    _styles = {
+        'success': {'fg_color': '#2E8B57', 'text_color': 'white', 'duration': 2500},
+        'info': {'fg_color': '#1E90FF', 'text_color': 'white', 'duration': 2500},
+        'warning': {'fg_color': '#FFC107', 'text_color': 'black', 'duration': 4000},
+        'error': {'fg_color': '#B71C1C', 'text_color': 'white', 'duration': 3500}
+    }
+
+    def __init__(self, parent, message, m_type, on_destroy_callback):
+        super().__init__(parent, corner_radius=6)
+        self.on_destroy_callback = on_destroy_callback
+
+        style = self._styles.get(m_type, self._styles['info'])
+
+        self.configure(fg_color=style['fg_color'])
+        label = ctk.CTkLabel(self, text=message, font=ctk.CTkFont(size=14),
+                             text_color=style['text_color'], wraplength=350)
+        label.pack(padx=15, pady=10)
+
+        duration = style.get('duration', 3000)
+        self.after(duration, self._start_destroy)
+
+    def _start_destroy(self):
+        self.on_destroy_callback(self)
+        self.destroy()
+
+
+class ToastManager:
+    """
+    Gère la création, l'empilement et la destruction des notifications toast.
     """
 
     def __init__(self, parent):
-        super().__init__(parent, corner_radius=6)
-        self._hide_job = None
-        self._styles = {
-            'success': {'fg_color': '#2E8B57', 'text_color': 'white'},
-            'info': {'fg_color': '#1E90FF', 'text_color': 'white'}
-        }
-        self._label = ctk.CTkLabel(self, text="", font=ctk.CTkFont(size=14))
-        self._label.pack(padx=15, pady=10)
+        self.parent = parent
+        self.active_toasts = []
+        self.padding_x = 0.02  # Utiliser une fraction pour relx
+        self.padding_y = 10    # Garder les pixels pour l'espacement vertical
 
-    def show(self, message, m_type='success', duration=2500):
-        if self._hide_job:
-            self.after_cancel(self._hide_job)
+    def show_toast(self, message, m_type='success'):
+        toast = ToastNotification(self.parent, message, m_type, on_destroy_callback=self._remove_toast)
+        toast.lift()
+        self.active_toasts.append(toast)
+        self._reposition_toasts()
 
-        style = self._styles.get(m_type, self._styles['info'])
-        self.configure(fg_color=style['fg_color'])
-        self._label.configure(text=message, text_color=style['text_color'])
+    def _remove_toast(self, toast_instance):
+        if toast_instance in self.active_toasts:
+            self.active_toasts.remove(toast_instance)
+        self._reposition_toasts()
 
-        self.lift()
-        self.place(relx=0.98, rely=0.98, anchor='se')
+    def _reposition_toasts(self):
+        self.parent.update_idletasks()
+        parent_height = self.parent.winfo_height()
 
-    def _hide(self):
-        self.place_forget()
-        self._hide_job = None
+        if parent_height < 100:
+            self.parent.after(100, self._reposition_toasts)
+            return
+
+        rel_x_pos = 1.0 - self.padding_x
+        y_for_bottom_edge = parent_height - self.padding_y
+
+        for toast in reversed(self.active_toasts):
+            toast.update_idletasks()
+            toast_height = toast.winfo_reqheight()
+
+            # Convertir la position y absolue en relative
+            rel_y_pos = y_for_bottom_edge / parent_height
+
+            toast.place(relx=rel_x_pos, rely=rel_y_pos, anchor='se')
+            toast.lift()
+
+            # Mettre à jour la position y pour la prochaine notification (au-dessus)
+            y_for_bottom_edge -= (toast_height + self.padding_y)

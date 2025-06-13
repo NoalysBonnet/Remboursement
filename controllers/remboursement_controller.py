@@ -83,7 +83,7 @@ class RemboursementController:
         return remboursement_model.admin_supprimer_archives_anciennes(age_en_annees)
 
     def admin_manual_archive(self, demande_id: str) -> tuple[bool, str]:
-        return remboursement_model.archiver_demande_par_id_et_donner_nom(demande_id)
+        return remboursement_model.archiver_demande_par_id(demande_id)
 
     def get_viewable_attachment_path(self, demande_id: str, rel_path: str) -> tuple[str | None, str | None]:
         demande_data = self.get_demande_by_id(demande_id)
@@ -162,3 +162,6 @@ class RemboursementController:
         return remboursement_model.mlupo_resoumettre_constat_corrige(id_demande, commentaire,
                                                                      nouveau_chemin_pj_trop_percu,
                                                                      self.utilisateur_actuel)
+
+    def mlupo_refuser_correction(self, id_demande: str, commentaire: str) -> tuple[bool, str]:
+        return remboursement_model.mlupo_refuser_correction(id_demande, commentaire, self.utilisateur_actuel)

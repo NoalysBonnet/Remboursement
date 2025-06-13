@@ -11,7 +11,7 @@ from controllers.auth_controller import AuthController
 from controllers.remboursement_controller import RemboursementController
 from controllers.password_reset_controller import PasswordResetController
 from models import user_model
-from utils.ui_utils import LoadingOverlay, ToastNotification
+from utils.ui_utils import LoadingOverlay, ToastManager
 
 
 class AppController:
@@ -25,7 +25,7 @@ class AppController:
         self.main_view = None
 
         self.loading_overlay = LoadingOverlay(self.root)
-        self.toast_notification = ToastNotification(self.root)
+        self.toast_manager = ToastManager(self.root)
 
         self._run_startup_tasks()
         self.show_login_view()
@@ -48,8 +48,6 @@ class AppController:
         return self.remboursement_controller
 
     def run_threaded_task(self, task_function, on_complete):
-        # On ne montre pas l'overlay tout de suite.
-        # On programme son apparition après un court délai (250ms).
         overlay_show_job = self.root.after(250, self.loading_overlay.show)
 
         task_queue = queue.Queue()
@@ -65,32 +63,27 @@ class AppController:
             try:
                 result = task_queue.get_nowait()
 
-                # La tâche est finie. On annule l'affichage programmé de l'overlay.
-                # Si la tâche a pris moins de 250ms, l'overlay n'apparaîtra jamais.
                 try:
                     self.root.after_cancel(overlay_show_job)
                 except tkinter.TclError:
-                    # Le job a peut-être déjà été exécuté, ce n'est pas une erreur.
                     pass
 
-                # Si l'overlay a eu le temps de s'afficher, on le cache.
                 self.loading_overlay.hide()
 
                 if isinstance(result, Exception):
                     print(f"Erreur dans le thread: {result}")
-                    messagebox.showerror("Erreur Inattendue", f"Une erreur est survenue durant l'opération:\n{result}")
+                    self.show_toast(f"Une erreur est survenue durant l'opération:\n{result}", "error")
                 else:
                     on_complete(result)
             except queue.Empty:
-                # La tâche n'est pas finie, on revérifie dans 100ms.
                 self.root.after(100, check_queue)
 
         threading.Thread(target=worker, daemon=True).start()
         self.root.after(100, check_queue)
 
     def show_toast(self, message: str, m_type: str = 'success'):
-        """Affiche une notification non-bloquante."""
-        self.toast_notification.show(message, m_type)
+        """Affiche une notification non-bloquante via le ToastManager."""
+        self.toast_manager.show_toast(message, m_type)
 
     def show_login_view(self):
         self.current_user = None
@@ -151,5 +144,5 @@ class AppController:
             self.show_login_view()
 
     def _show_admin_warning_popup(self):
-        messagebox.showwarning("Mode Administrateur",
-                               "Vous êtes connecté en tant qu'administrateur.\nCertaines actions sont irréversibles.")
+        self.show_toast("Vous êtes connecté en tant qu'administrateur.\nCertaines actions sont irréversibles.",
+                        "warning")

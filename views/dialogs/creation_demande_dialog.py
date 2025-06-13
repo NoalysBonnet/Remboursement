@@ -1,6 +1,5 @@
 import os
 import customtkinter as ctk
-from tkinter import messagebox
 
 
 class CreationDemandeDialog(ctk.CTkToplevel):
@@ -118,7 +117,7 @@ class CreationDemandeDialog(ctk.CTkToplevel):
         )
 
         if not is_valid:
-            messagebox.showerror("Erreur de saisie", error_message, parent=self)
+            self.app_controller.show_toast(error_message, "error")
             return
 
         def combined_task():
@@ -134,9 +133,9 @@ class CreationDemandeDialog(ctk.CTkToplevel):
 
         def on_complete(result):
             if result['status'] == 'error':
-                messagebox.showerror("Erreur", result['message'], parent=self.master)
+                self.app_controller.show_toast(result['message'], 'error')
             else:
-                self.app_controller.show_toast(result['message'])
+                self.app_controller.show_toast(result['message'], 'success')
                 self.master._render_demandes_list(result['data'])
             self.destroy()
 

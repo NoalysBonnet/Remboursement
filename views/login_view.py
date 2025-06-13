@@ -1,6 +1,4 @@
 import customtkinter as ctk
-from tkinter import messagebox, simpledialog
-
 from utils.password_utils import check_password_strength
 
 
@@ -54,8 +52,7 @@ class LoginView(ctk.CTkFrame):
         mot_de_passe = self.entry_mdp.get()
 
         if not nom_utilisateur or not mot_de_passe:
-            messagebox.showerror("Erreur de saisie", "Veuillez entrer un nom d'utilisateur et un mot de passe.",
-                                 parent=self.master)
+            self.app_controller.show_toast("Veuillez entrer un nom d'utilisateur et un mot de passe.", "error")
             return
 
         def task():
@@ -66,8 +63,7 @@ class LoginView(ctk.CTkFrame):
                 self.focus_set()
                 self.after(10, lambda: self.app_controller.on_login_success(utilisateur_connecte))
             else:
-                messagebox.showerror("Échec de la connexion", "Nom d'utilisateur ou mot de passe incorrect.",
-                                     parent=self.master)
+                self.app_controller.show_toast("Nom d'utilisateur ou mot de passe incorrect.", "error")
                 self.entry_mdp.delete(0, 'end')
 
         self.app_controller.run_threaded_task(task, on_complete)
@@ -136,15 +132,14 @@ class LoginView(ctk.CTkFrame):
             confirm = entry_confirm_mdp.get()
 
             if not all([user, ancien, nouveau, confirm]):
-                messagebox.showerror("Erreur", "Tous les champs sont requis.", parent=dialog)
+                self.app_controller.show_toast("Tous les champs sont requis.", "error")
                 return
             if nouveau != confirm:
-                messagebox.showerror("Erreur", "Le nouveau mot de passe et sa confirmation ne correspondent pas.",
-                                     parent=dialog)
+                self.app_controller.show_toast("Le nouveau mot de passe et sa confirmation ne correspondent pas.",
+                                               "error")
                 return
             if len(nouveau) < 6:
-                messagebox.showerror("Erreur", "Le nouveau mot de passe doit comporter au moins 6 caractères.",
-                                     parent=dialog)
+                self.app_controller.show_toast("Le nouveau mot de passe doit comporter au moins 6 caractères.", "error")
                 return
 
             def task():
@@ -152,12 +147,12 @@ class LoginView(ctk.CTkFrame):
 
             def on_complete(success):
                 if success:
-                    self.app_controller.show_toast("Mot de passe modifié avec succès.")
+                    self.app_controller.show_toast("Mot de passe modifié avec succès.", 'success')
+                    dialog.destroy()
                 else:
-                    messagebox.showerror("Erreur",
-                                         "Échec de la modification du mot de passe. Vérifiez votre nom d'utilisateur et votre ancien mot de passe.",
-                                         parent=self.master)
-                dialog.destroy()
+                    self.app_controller.show_toast(
+                        "Échec de la modification. Vérifiez votre nom d'utilisateur et votre ancien mot de passe.",
+                        "error")
 
             dialog.withdraw()
             self.app_controller.run_threaded_task(task, on_complete)

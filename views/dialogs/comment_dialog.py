@@ -1,5 +1,5 @@
 import customtkinter as ctk
-from tkinter import messagebox
+
 
 class CommentDialog(ctk.CTkToplevel):
     def __init__(self, master, title: str, prompt: str, is_mandatory: bool = False):
@@ -12,6 +12,7 @@ class CommentDialog(ctk.CTkToplevel):
 
         self._comment = None
         self._is_mandatory = is_mandatory
+        self.master = master
 
         main_frame = ctk.CTkFrame(self, fg_color="transparent")
         main_frame.pack(expand=True, fill="both", padx=20, pady=20)
@@ -33,7 +34,7 @@ class CommentDialog(ctk.CTkToplevel):
     def _on_validate(self):
         comment_text = self.comment_textbox.get("1.0", "end-1c").strip()
         if self._is_mandatory and not comment_text:
-            messagebox.showerror("Champ Requis", "Le commentaire est obligatoire pour cette action.", parent=self)
+            self.master.app_controller.show_toast("Le commentaire est obligatoire pour cette action.", "error")
             return
 
         self._comment = comment_text
