@@ -32,7 +32,7 @@ class AdminUserManagementView(ctk.CTkToplevel):
                                             command=self._show_role_descriptions)
         btn_show_roles_info.pack(side="left", padx=5)
 
-        btn_config_smtp = ctk.CTkButton(action_bar_frame, text="Configurer E-mail (SMTP)",
+        btn_config_smtp = ctk.CTkButton(action_bar_frame, text="Configuration Email Récupération",
                                         command=self._open_smtp_config_dialog,
                                         fg_color="#334155", hover_color="#475569")
         btn_config_smtp.pack(side="left", padx=5)
@@ -52,7 +52,7 @@ class AdminUserManagementView(ctk.CTkToplevel):
         close_button.pack(pady=10)
 
     def _open_smtp_config_dialog(self):
-        AdminConfigView(self, self.auth_controller, self.app_controller)
+        AdminConfigView(self, self.auth_controller)
 
     def populate_user_list(self):
         def task():
