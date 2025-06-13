@@ -14,10 +14,10 @@ APP_ROOT_PATH = get_application_base_path()
 
 # --- CONFIGURATION DES CHEMINS DE DONNÉES ---
 # MODE DÉPLOIEMENT (à décommenter pour créer l'EXE)
-#SHARED_DATA_BASE_PATH = "Z:\\REMBOURSEMENT"
+SHARED_DATA_BASE_PATH = "Z:\\REMBOURSEMENT"
 
 # MODE DÉVELOPPEMENT LOCAL (à commenter pour créer l'EXE)
-SHARED_DATA_BASE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "donnees_partagees_mock")
+#SHARED_DATA_BASE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "donnees_partagees_mock")
 
 
 IS_DEPLOYMENT_MODE = not SHARED_DATA_BASE_PATH.startswith(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
