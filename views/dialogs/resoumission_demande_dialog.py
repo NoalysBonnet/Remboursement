@@ -131,19 +131,23 @@ class ResoumissionDemandeDialog(ctk.CTkToplevel):
                                  "Un commentaire expliquant la correction est obligatoire.", parent=self)
             return
 
-        def task():
-            return self.remboursement_controller.pneri_resoumettre_demande_corrigee(
+        def combined_task():
+            action_success, action_message = self.remboursement_controller.pneri_resoumettre_demande_corrigee(
                 self.id_demande, commentaire, self.new_facture_path, self.new_rib_path
             )
+            if not action_success:
+                return {'status': 'error', 'message': action_message}
+
+            refreshed_data = self.master._get_refreshed_and_sorted_data(force_reload=True)
+            return {'status': 'success', 'data': refreshed_data, 'message': action_message}
 
         def on_complete(result):
-            succes, msg = result
-            if succes:
-                messagebox.showinfo("Succès", msg, parent=self.master)
-                self.master.afficher_liste_demandes(force_reload=True)
+            if result['status'] == 'error':
+                messagebox.showerror("Erreur", result['message'], parent=self.master)
             else:
-                messagebox.showerror("Erreur", msg, parent=self.master)
+                self.app_controller.show_toast(result['message'])
+                self.master._render_demandes_list(result['data'])
             self.destroy()
 
         self.withdraw()
-        self.app_controller.run_threaded_task(task, on_complete)
+        self.app_controller.run_threaded_task(combined_task, on_complete)

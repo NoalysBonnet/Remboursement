@@ -106,27 +106,39 @@ class CreationDemandeDialog(ctk.CTkToplevel):
             self._entry_chemin_rib_complet = chemin
 
     def _soumettre_demande(self):
-        form_data = {
-            "nom": self.entries_demande["nom"].get(),
-            "prenom": self.entries_demande["prenom"].get(),
-            "reference_facture": self.entries_demande["reference_facture"].get(),
-            "montant_demande_str": self.entries_demande["montant_demande"].get(),
-            "description": self.textbox_description.get("1.0", "end-1c").strip(),
-            "chemin_facture_source": self._entry_chemin_facture_complet,
-            "chemin_rib_source": self._entry_chemin_rib_complet
-        }
+        nom = self.entries_demande["nom"].get()
+        prenom = self.entries_demande["prenom"].get()
+        ref_facture = self.entries_demande["reference_facture"].get()
+        montant_str = self.entries_demande["montant_demande"].get()
+        description = self.textbox_description.get("1.0", "end-1c").strip()
 
-        def task():
-            return self.remboursement_controller.creer_demande_remboursement(**form_data)
+        is_valid, error_message, montant_valide = self.remboursement_controller._valider_donnees_demande(
+            nom, prenom, ref_facture, montant_str, description,
+            self._entry_chemin_facture_complet, self._entry_chemin_rib_complet
+        )
+
+        if not is_valid:
+            messagebox.showerror("Erreur de saisie", error_message, parent=self)
+            return
+
+        def combined_task():
+            action_success, action_message = self.remboursement_controller.creer_demande_remboursement(
+                nom, prenom, ref_facture, montant_valide, description,
+                self._entry_chemin_facture_complet, self._entry_chemin_rib_complet
+            )
+            if not action_success:
+                return {'status': 'error', 'message': action_message}
+
+            refreshed_data = self.master._get_refreshed_and_sorted_data(force_reload=True)
+            return {'status': 'success', 'data': refreshed_data, 'message': action_message}
 
         def on_complete(result):
-            succes, message = result
-            if succes:
-                messagebox.showinfo("Succès", message, parent=self.master)
-                self.master.afficher_liste_demandes(force_reload=True)
+            if result['status'] == 'error':
+                messagebox.showerror("Erreur", result['message'], parent=self.master)
             else:
-                messagebox.showerror("Erreur", message, parent=self.master)
+                self.app_controller.show_toast(result['message'])
+                self.master._render_demandes_list(result['data'])
             self.destroy()
 
         self.withdraw()
-        self.app_controller.run_threaded_task(task, on_complete)
+        self.app_controller.run_threaded_task(combined_task, on_complete)

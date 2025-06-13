@@ -366,7 +366,7 @@ class MainView(ctk.CTkFrame):
         def on_complete(user_data):
             if user_data:
                 self.user_data = user_data
-                ProfileView(self, self.auth_controller, self.app_controller, self.user_data,
+                ProfileView(self, self.auth_controller, self.app_controller, user_data,
                             on_save_callback=self._on_profile_saved)
 
         self.app_controller.run_threaded_task(task, on_complete)

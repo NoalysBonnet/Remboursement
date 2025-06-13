@@ -1,4 +1,3 @@
-# models/remboursement_workflow.py
 import os
 import datetime
 import shutil
@@ -95,8 +94,9 @@ def accepter_constat_trop_percu_action(id_demande: str, commentaire: str, utilis
     succes_hist = remboursement_data.ajouter_entree_historique_data(id_demande, nouvelle_entree_historique)
 
     if succes_maj_demande and succes_hist:
-        return True, f"Constat de trop-perçu accepté. Statut: '{STATUT_TROP_PERCU_CONSTATE}'."
-    return False, "Erreur lors de la mise à jour de la demande pour acceptation du constat."
+        nom_patient = f"{demande_actuelle.get('prenom', '')} {demande_actuelle.get('nom', '')}".strip()
+        return True, f"Constat accepté pour {nom_patient}."
+    return False, "Erreur lors de l'acceptation du constat."
 
 
 def refuser_constat_trop_percu_action(id_demande: str, commentaire: str, utilisateur_mlupo: str) -> tuple[bool, str]:
@@ -120,7 +120,8 @@ def refuser_constat_trop_percu_action(id_demande: str, commentaire: str, utilisa
     succes_hist = remboursement_data.ajouter_entree_historique_data(id_demande, nouvelle_entree_historique)
 
     if succes_maj_demande and succes_hist:
-        return True, f"Constat refusé. Statut: '{STATUT_REFUSEE_CONSTAT_TP}'."
+        nom_patient = f"{demande_actuelle.get('prenom', '')} {demande_actuelle.get('nom', '')}".strip()
+        return True, f"Constat refusé pour {nom_patient}."
     return False, "Erreur lors du refus du constat."
 
 
@@ -144,7 +145,8 @@ def annuler_demande_action(id_demande: str, commentaire: str, utilisateur_annula
     succes_hist = remboursement_data.ajouter_entree_historique_data(id_demande, nouvelle_entree_historique)
 
     if succes_maj_demande and succes_hist:
-        return True, f"Demande annulée. Statut: '{STATUT_ANNULEE}'."
+        nom_patient = f"{demande_actuelle.get('prenom', '')} {demande_actuelle.get('nom', '')}".strip()
+        return True, f"Demande pour {nom_patient} annulée."
     return False, "Erreur lors de l'annulation de la demande."
 
 
@@ -170,7 +172,8 @@ tuple[bool, str]:
     succes_hist = remboursement_data.ajouter_entree_historique_data(id_demande, nouvelle_entree_historique)
 
     if succes_maj_demande and succes_hist:
-        return True, f"Demande validée. Statut: '{STATUT_VALIDEE}'."
+        nom_patient = f"{demande_actuelle.get('prenom', '')} {demande_actuelle.get('nom', '')}".strip()
+        return True, f"Demande pour {nom_patient} validée."
     return False, "Erreur lors de la validation de la demande."
 
 
@@ -196,7 +199,8 @@ def refuser_demande_par_validateur_action(id_demande: str, commentaire: str, uti
     succes_hist = remboursement_data.ajouter_entree_historique_data(id_demande, nouvelle_entree_historique)
 
     if succes_maj_demande and succes_hist:
-        return True, f"Demande refusée par validateur. Statut: '{STATUT_REFUSEE_VALIDATION_CORRECTION_MLUPO}'."
+        nom_patient = f"{demande_actuelle.get('prenom', '')} {demande_actuelle.get('nom', '')}".strip()
+        return True, f"Demande pour {nom_patient} refusée et renvoyée pour correction."
     return False, "Erreur lors du refus de la demande par le validateur."
 
 
@@ -225,7 +229,8 @@ def confirmer_paiement_action(id_demande: str, utilisateur_pdiop: str, commentai
     succes_hist = remboursement_data.ajouter_entree_historique_data(id_demande, nouvelle_entree_historique)
 
     if succes_maj_demande and succes_hist:
-        return True, f"Paiement confirmé. Demande terminée. Statut: '{STATUT_PAIEMENT_EFFECTUE}'."
+        nom_patient = f"{demande_actuelle.get('prenom', '')} {demande_actuelle.get('nom', '')}".strip()
+        return True, f"Paiement confirmé pour {nom_patient}."
     return False, "Erreur lors de la confirmation du paiement."
 
 
@@ -268,7 +273,8 @@ def pneri_resoumettre_demande_action(id_demande: str, nouveau_commentaire: str,
     succes_hist = remboursement_data.ajouter_entree_historique_data(id_demande, nouvelle_entree_historique)
 
     if succes_maj_demande and succes_hist:
-        return True, f"Demande corrigée et resoumise. Statut: '{STATUT_CREEE}'."
+        nom_patient = f"{demande_actuelle.get('prenom', '')} {demande_actuelle.get('nom', '')}".strip()
+        return True, f"Demande pour {nom_patient} corrigée et resoumise."
     return False, "Erreur lors de la resoumission de la demande corrigée."
 
 
@@ -306,5 +312,6 @@ def mlupo_resoumettre_constat_action(id_demande: str, nouveau_commentaire: str,
     succes_hist = remboursement_data.ajouter_entree_historique_data(id_demande, nouvelle_entree_historique)
 
     if succes_maj_demande and succes_hist:
-        return True, f"Constat corrigé et resoumis. Statut: '{STATUT_TROP_PERCU_CONSTATE}'."
+        nom_patient = f"{demande_actuelle.get('prenom', '')} {demande_actuelle.get('nom', '')}".strip()
+        return True, f"Constat pour {nom_patient} corrigé et resoumis."
     return False, "Erreur lors de la resoumission du constat corrigé."

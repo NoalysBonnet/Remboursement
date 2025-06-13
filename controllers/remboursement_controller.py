@@ -1,4 +1,3 @@
-# controllers/remboursement_controller.py
 from models import remboursement_model
 from utils import pdf_utils, archive_utils
 from tkinter import filedialog
@@ -30,32 +29,42 @@ class RemboursementController:
             return {"nom": "", "prenom": "", "reference": ""}
         return pdf_utils.extraire_infos_facture(chemin_pdf)
 
-    def creer_demande_remboursement(
-            self, nom: str, prenom: str, reference_facture: str, montant_demande_str: str,
-            description: str, chemin_facture_source: str | None, chemin_rib_source: str
-    ) -> tuple[bool, str]:
+    def _valider_donnees_demande(self, nom: str, prenom: str, reference_facture: str, montant_demande_str: str,
+                                 description: str, chemin_facture_source: str | None, chemin_rib_source: str
+                                 ) -> tuple[bool, str, float | None]:
+        """Effectue la validation synchrone des données du formulaire."""
         if not all([nom, prenom, reference_facture, montant_demande_str, description]):
-            return False, "Tous les champs de texte sont obligatoires."
+            return False, "Tous les champs de texte sont obligatoires.", None
         if not chemin_rib_source:
-            return False, "La sélection du fichier RIB est obligatoire."
+            return False, "La sélection du fichier RIB est obligatoire.", None
 
         try:
             montant_demande = float(montant_demande_str.replace(",", "."))
-            if montant_demande <= 0: return False, "Le montant demandé doit être un nombre positif."
+            if montant_demande <= 0:
+                return False, "Le montant demandé doit être un nombre positif.", None
         except ValueError:
-            return False, "Le montant demandé doit être un nombre valide."
+            return False, "Le montant demandé doit être un nombre valide.", None
 
         if chemin_facture_source and not os.path.exists(chemin_facture_source):
-            return False, f"Fichier facture non trouvé : {chemin_facture_source}"
+            return False, f"Fichier facture non trouvé : {chemin_facture_source}", None
         if not os.path.exists(chemin_rib_source):
-            return False, f"Fichier RIB non trouvé : {chemin_rib_source}"
+            return False, f"Fichier RIB non trouvé : {chemin_rib_source}", None
 
+        return True, "", montant_demande
+
+    def creer_demande_remboursement(
+            self, nom: str, prenom: str, reference_facture: str, montant_demande: float,
+            description: str, chemin_facture_source: str | None, chemin_rib_source: str
+    ) -> tuple[bool, str]:
+        """Crée la demande après validation (partie asynchrone)."""
         nouvelle_demande = remboursement_model.creer_nouvelle_demande(
             nom, prenom, reference_facture, montant_demande,
             chemin_facture_source, chemin_rib_source, self.utilisateur_actuel, description
         )
-        return (True, f"Demande {nouvelle_demande['id_demande']} créée.") if nouvelle_demande else (
-            False, "Erreur lors de la création de la demande.")
+        if nouvelle_demande:
+            return True, f"Demande pour {prenom.title()} {nom.upper()} créée."
+        else:
+            return False, "Erreur lors de la création de la demande."
 
     def get_demande_by_id(self, demande_id: str) -> dict | None:
         return remboursement_model.obtenir_demande_par_id(demande_id)
@@ -74,9 +83,7 @@ class RemboursementController:
         return remboursement_model.admin_supprimer_archives_anciennes(age_en_annees)
 
     def admin_manual_archive(self, demande_id: str) -> tuple[bool, str]:
-        succes = remboursement_model.archiver_demande_par_id(demande_id)
-        return (True, f"Demande {demande_id} archivée manuellement.") if succes else (
-            False, "Erreur lors de l'archivage manuel.")
+        return remboursement_model.archiver_demande_par_id_et_donner_nom(demande_id)
 
     def get_viewable_attachment_path(self, demande_id: str, rel_path: str) -> tuple[str | None, str | None]:
         demande_data = self.get_demande_by_id(demande_id)
@@ -110,20 +117,14 @@ class RemboursementController:
             return False, "Téléchargement annulé par l'utilisateur."
         try:
             shutil.copy2(chemin_absolu_pj_source, chemin_destination)
-            return True, f"Fichier enregistré avec succès sous {chemin_destination}"
+            return True, f"Fichier enregistré avec succès."
         except Exception as e:
             return False, f"Erreur lors de l'enregistrement du fichier : {e}"
         finally:
             if temp_dir_to_clean: archive_utils.cleanup_temp_dir(temp_dir_to_clean)
 
-    # CORRECTION : La logique a été revue pour s'assurer que l'ajout de la PJ est fait avant le changement de statut
     def mlupo_accepter_constat(self, id_demande: str, chemin_pj_trop_percu_source: str, commentaire: str) -> tuple[
         bool, str]:
-        if not chemin_pj_trop_percu_source or not os.path.exists(chemin_pj_trop_percu_source):
-            return False, f"Fichier de preuve de trop-perçu obligatoire et non trouvé : {chemin_pj_trop_percu_source}"
-        if not commentaire.strip():
-            return False, "Un commentaire est obligatoire pour cette action."
-
         succes_pj, msg_pj, _ = remboursement_model.ajouter_piece_jointe_trop_percu(
             id_demande, chemin_pj_trop_percu_source, self.utilisateur_actuel
         )
@@ -134,11 +135,7 @@ class RemboursementController:
             id_demande, commentaire, self.utilisateur_actuel
         )
 
-        if succes_statut:
-            return True, msg_statut
-        else:
-            # Idéalement, il faudrait une logique pour annuler l'ajout de la PJ si le statut échoue (transaction)
-            return False, f"PJ ajoutée, mais erreur de mise à jour du statut : {msg_statut}"
+        return (succes_statut, msg_statut)
 
     def mlupo_refuser_constat(self, id_demande: str, commentaire: str) -> tuple[bool, str]:
         return remboursement_model.refuser_constat_trop_percu(id_demande, commentaire, self.utilisateur_actuel)

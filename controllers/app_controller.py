@@ -3,6 +3,7 @@ import os
 import sys
 import threading
 import queue
+import tkinter
 from tkinter import messagebox
 from views.login_view import LoginView
 from views.main_view import MainView
@@ -47,7 +48,10 @@ class AppController:
         return self.remboursement_controller
 
     def run_threaded_task(self, task_function, on_complete):
-        self.loading_overlay.show()
+        # On ne montre pas l'overlay tout de suite.
+        # On programme son apparition après un court délai (250ms).
+        overlay_show_job = self.root.after(250, self.loading_overlay.show)
+
         task_queue = queue.Queue()
 
         def worker():
@@ -60,13 +64,25 @@ class AppController:
         def check_queue():
             try:
                 result = task_queue.get_nowait()
+
+                # La tâche est finie. On annule l'affichage programmé de l'overlay.
+                # Si la tâche a pris moins de 250ms, l'overlay n'apparaîtra jamais.
+                try:
+                    self.root.after_cancel(overlay_show_job)
+                except tkinter.TclError:
+                    # Le job a peut-être déjà été exécuté, ce n'est pas une erreur.
+                    pass
+
+                # Si l'overlay a eu le temps de s'afficher, on le cache.
                 self.loading_overlay.hide()
+
                 if isinstance(result, Exception):
                     print(f"Erreur dans le thread: {result}")
                     messagebox.showerror("Erreur Inattendue", f"Une erreur est survenue durant l'opération:\n{result}")
                 else:
                     on_complete(result)
             except queue.Empty:
+                # La tâche n'est pas finie, on revérifie dans 100ms.
                 self.root.after(100, check_queue)
 
         threading.Thread(target=worker, daemon=True).start()
@@ -130,9 +146,7 @@ class AppController:
                 os.execl(python, python, *sys.argv)
             except Exception as e:
                 print(f"Erreur lors de la tentative de redémarrage : {e}")
-                messagebox.showinfo("Redémarrage Manuel Requis",
-                                    "Le redémarrage automatique a échoué. Veuillez fermer et relancer l'application manuellement.",
-                                    parent=self.root)
+                self.show_toast("Le redémarrage automatique a échoué. Veuillez relancer l'application.", "info")
         else:
             self.show_login_view()
 

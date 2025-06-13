@@ -68,9 +68,7 @@ class ToastNotification(ctk.CTkFrame):
         self._label.configure(text=message, text_color=style['text_color'])
 
         self.lift()
-        self.place(relx=0.02, rely=0.98, anchor='sw')
-
-        self._hide_job = self.after(duration, self._hide)
+        self.place(relx=0.98, rely=0.98, anchor='se')
 
     def _hide(self):
         self.place_forget()

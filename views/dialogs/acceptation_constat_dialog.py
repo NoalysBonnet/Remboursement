@@ -51,21 +51,25 @@ class AcceptationConstatDialog(ctk.CTkToplevel):
             messagebox.showerror("Erreur", "Le commentaire est obligatoire.", parent=self)
             return
 
-        def task():
-            return self.remboursement_controller.mlupo_accepter_constat(
+        def combined_task():
+            action_success, action_message = self.remboursement_controller.mlupo_accepter_constat(
                 id_demande=self.id_demande,
                 chemin_pj_trop_percu_source=self.current_pj_path,
                 commentaire=commentaire
             )
+            if not action_success:
+                return {'status': 'error', 'message': action_message}
+
+            refreshed_data = self.master._get_refreshed_and_sorted_data(force_reload=True)
+            return {'status': 'success', 'data': refreshed_data, 'message': action_message}
 
         def on_complete(result):
-            succes, msg = result
-            if succes:
-                messagebox.showinfo("Succès", msg, parent=self.master)
-                self.master.afficher_liste_demandes(force_reload=True)
+            if result['status'] == 'error':
+                messagebox.showerror("Erreur", result['message'], parent=self.master)
             else:
-                messagebox.showerror("Erreur", msg, parent=self.master)
+                self.app_controller.show_toast(result['message'])
+                self.master._render_demandes_list(result['data'])
             self.destroy()
 
         self.withdraw()
-        self.app_controller.run_threaded_task(task, on_complete)
+        self.app_controller.run_threaded_task(combined_task, on_complete)
