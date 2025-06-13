@@ -41,8 +41,8 @@
             "validateur_chef",
             "visualiseur_seul"
         ],
-        "theme_color": "dark-blue",
-        "default_filter": "Toutes les demandes",
+        "theme_color": "green",
+        "default_filter": "En attente de mon action",
         "profile_picture_path": null
     },
     "m.fessy": {
