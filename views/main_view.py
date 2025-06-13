@@ -22,6 +22,7 @@ from views.admin_user_management_view import AdminUserManagementView
 from views.help_view import HelpView
 from views.profile_view import ProfileView
 from utils.image_utils import create_circular_image
+from views.dialogs.comment_dialog import CommentDialog
 
 POLLING_INTERVAL_MS = 5000
 COULEUR_ACTIVE_POUR_UTILISATEUR = "#1E4D2B"
@@ -53,7 +54,6 @@ class MainView(ctk.CTkFrame):
         self.include_archives = ctk.BooleanVar(value=False)
         self.search_var = ctk.StringVar()
 
-        # CORRECTION : Définition de self.callbacks au niveau de l'instance
         self.callbacks = {
             'voir_pj': self._action_voir_pj,
             'dl_pj': self._action_telecharger_pj,
@@ -124,7 +124,7 @@ class MainView(ctk.CTkFrame):
         self.bouton_rafraichir.pack(side="left", pady=5, padx=10)
         self.notification_badge = ctk.CTkLabel(self.bouton_rafraichir, text="", fg_color="red", corner_radius=8,
                                                width=18, height=18, font=("Arial", 11, "bold"))
-        self.bind("<F5>", lambda event: self.afficher_liste_demandes(force_reload=True))
+        self.winfo_toplevel().bind("<F5>", lambda event: self.afficher_liste_demandes(force_reload=True))
 
         if self.est_admin():
             ctk.CTkButton(actions_bar_frame, text="Gérer Utilisateurs", command=self._open_admin_user_management_view,
@@ -336,7 +336,6 @@ class MainView(ctk.CTkFrame):
             "Le changement de thème nécessite un redémarrage.")
 
     def _ouvrir_fenetre_creation_demande(self):
-        # La logique de création est maintenant dans son propre dialogue
         from views.dialogs.creation_demande_dialog import CreationDemandeDialog
         CreationDemandeDialog(self, self.remboursement_controller)
 
@@ -357,13 +356,13 @@ class MainView(ctk.CTkFrame):
             messagebox.showerror("Erreur", message, parent=self)
 
     def _action_mlupo_accepter(self, id_demande):
-        # La logique a été déplacée dans un fichier séparé
         from views.dialogs.acceptation_constat_dialog import AcceptationConstatDialog
         AcceptationConstatDialog(self, self.remboursement_controller, id_demande)
 
     def _action_mlupo_refuser(self, id_demande):
-        commentaire = simpledialog.askstring("Refus", "Motif du refus :", parent=self)
-        if commentaire:
+        dialog = CommentDialog(self, title="Refus du Constat", prompt="Veuillez indiquer le motif du refus :", is_mandatory=True)
+        commentaire = dialog.get_comment()
+        if commentaire is not None:
             succes, msg = self.remboursement_controller.mlupo_refuser_constat(id_demande, commentaire)
             if succes:
                 self.afficher_liste_demandes(force_reload=True)
@@ -371,7 +370,8 @@ class MainView(ctk.CTkFrame):
                 messagebox.showerror("Erreur", msg, parent=self)
 
     def _action_jdurousset_valider(self, id_demande):
-        commentaire = simpledialog.askstring("Validation", "Commentaire (optionnel) :", parent=self)
+        dialog = CommentDialog(self, title="Validation de la Demande", prompt="Voulez-vous ajouter un commentaire ?", is_mandatory=False)
+        commentaire = dialog.get_comment()
         if commentaire is not None:
             succes, msg = self.remboursement_controller.jdurousset_valider_demande(id_demande, commentaire)
             if succes:
@@ -380,8 +380,9 @@ class MainView(ctk.CTkFrame):
                 messagebox.showerror("Erreur", msg, parent=self)
 
     def _action_jdurousset_refuser(self, id_demande):
-        commentaire = simpledialog.askstring("Refus", "Motif du refus :", parent=self)
-        if commentaire:
+        dialog = CommentDialog(self, title="Refus de la Demande", prompt="Veuillez indiquer le motif du refus :", is_mandatory=True)
+        commentaire = dialog.get_comment()
+        if commentaire is not None:
             succes, msg = self.remboursement_controller.jdurousset_refuser_demande(id_demande, commentaire)
             if succes:
                 self.afficher_liste_demandes(force_reload=True)
@@ -389,7 +390,8 @@ class MainView(ctk.CTkFrame):
                 messagebox.showerror("Erreur", msg, parent=self)
 
     def _action_pdiop_confirmer_paiement(self, id_demande):
-        commentaire = simpledialog.askstring("Confirmation Paiement", "Commentaire (optionnel) :", parent=self)
+        dialog = CommentDialog(self, title="Confirmation du Paiement", prompt="Voulez-vous ajouter un commentaire ?", is_mandatory=False)
+        commentaire = dialog.get_comment()
         if commentaire is not None:
             succes, msg = self.remboursement_controller.pdiop_confirmer_paiement_effectue(id_demande, commentaire)
             if succes:
@@ -398,21 +400,20 @@ class MainView(ctk.CTkFrame):
                 messagebox.showerror("Erreur", msg, parent=self)
 
     def _action_pneri_annuler(self, id_demande):
-        commentaire = simpledialog.askstring("Annulation", "Raison de l'annulation (obligatoire) :", parent=self)
-        if commentaire:
-            succes, msg = self.remboursement_controller.annuler_demande(id_demande, commentaire)
+        dialog = CommentDialog(self, title="Annulation de la Demande", prompt="Veuillez indiquer la raison de l'annulation :", is_mandatory=True)
+        commentaire = dialog.get_comment()
+        if commentaire is not None:
+            succes, msg = self.remboursement_controller.pneri_annuler_demande(id_demande, commentaire)
             if succes:
                 self.afficher_liste_demandes(force_reload=True)
             else:
                 messagebox.showerror("Erreur", msg, parent=self)
 
     def _action_pneri_resoumettre(self, id_demande):
-        # La logique a été déplacée dans un fichier séparé
         from views.dialogs.resoumission_demande_dialog import ResoumissionDemandeDialog
         ResoumissionDemandeDialog(self, self.remboursement_controller, id_demande)
 
     def _action_mlupo_resoumettre_constat(self, id_demande):
-        # La logique a été déplacée dans un fichier séparé
         from views.dialogs.resoumission_constat_dialog import ResoumissionConstatDialog
         ResoumissionConstatDialog(self, self.remboursement_controller, id_demande)
 
