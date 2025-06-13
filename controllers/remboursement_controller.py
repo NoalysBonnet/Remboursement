@@ -20,6 +20,7 @@ class RemboursementController:
         self.utilisateur_actuel = utilisateur_actuel
 
     def archive_old_requests(self):
+        """Lance la tâche système d'archivage des anciennes demandes."""
         count = remboursement_model.archiver_les_vieilles_demandes()
         if count > 0:
             print(f"{count} demande(s) ont été archivée(s).")
@@ -29,7 +30,6 @@ class RemboursementController:
             return {"nom": "", "prenom": "", "reference": ""}
         return pdf_utils.extraire_infos_facture(chemin_pdf)
 
-    # CORRECTION : Ordre des paramètres de la méthode
     def creer_demande_remboursement(
             self, nom: str, prenom: str, reference_facture: str, montant_demande_str: str,
             description: str, chemin_facture_source: str | None, chemin_rib_source: str
@@ -116,9 +116,29 @@ class RemboursementController:
         finally:
             if temp_dir_to_clean: archive_utils.cleanup_temp_dir(temp_dir_to_clean)
 
+    # CORRECTION : La logique a été revue pour s'assurer que l'ajout de la PJ est fait avant le changement de statut
     def mlupo_accepter_constat(self, id_demande: str, chemin_pj_trop_percu_source: str, commentaire: str) -> tuple[
         bool, str]:
-        return remboursement_model.accepter_constat_trop_percu(id_demande, commentaire, self.utilisateur_actuel)
+        if not chemin_pj_trop_percu_source or not os.path.exists(chemin_pj_trop_percu_source):
+            return False, f"Fichier de preuve de trop-perçu obligatoire et non trouvé : {chemin_pj_trop_percu_source}"
+        if not commentaire.strip():
+            return False, "Un commentaire est obligatoire pour cette action."
+
+        succes_pj, msg_pj, _ = remboursement_model.ajouter_piece_jointe_trop_percu(
+            id_demande, chemin_pj_trop_percu_source, self.utilisateur_actuel
+        )
+        if not succes_pj:
+            return False, f"Erreur lors de l'ajout de la pièce jointe : {msg_pj}"
+
+        succes_statut, msg_statut = remboursement_model.accepter_constat_trop_percu(
+            id_demande, commentaire, self.utilisateur_actuel
+        )
+
+        if succes_statut:
+            return True, msg_statut
+        else:
+            # Idéalement, il faudrait une logique pour annuler l'ajout de la PJ si le statut échoue (transaction)
+            return False, f"PJ ajoutée, mais erreur de mise à jour du statut : {msg_statut}"
 
     def mlupo_refuser_constat(self, id_demande: str, commentaire: str) -> tuple[bool, str]:
         return remboursement_model.refuser_constat_trop_percu(id_demande, commentaire, self.utilisateur_actuel)

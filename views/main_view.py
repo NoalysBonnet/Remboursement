@@ -1,4 +1,3 @@
-# views/main_view.py
 import os
 import customtkinter as ctk
 from tkinter import messagebox, simpledialog
@@ -24,10 +23,6 @@ from views.help_view import HelpView
 from views.profile_view import ProfileView
 from utils.image_utils import create_circular_image
 
-# Importation des nouvelles fenêtres de dialogue pour la resoumission
-from views.dialogs.resoumission_demande_dialog import ResoumissionDemandeDialog
-from views.dialogs.resoumission_constat_dialog import ResoumissionConstatDialog
-
 POLLING_INTERVAL_MS = 5000
 COULEUR_ACTIVE_POUR_UTILISATEUR = "#1E4D2B"
 COULEUR_DEMANDE_TERMINEE = "#2E4374"
@@ -48,7 +43,7 @@ class MainView(ctk.CTkFrame):
         self.pfp_size = 80
         self._polling_job_id = None
         self._last_known_remboursements_mtime = 0
-        self.all_demandes = []
+        self.all_demandes_cache = []
 
         self._fetch_user_data()
         self.initial_theme = self.user_data.get("theme_color", "blue")
@@ -57,6 +52,23 @@ class MainView(ctk.CTkFrame):
         self.current_filter = self.user_data.get("default_filter", "Toutes les demandes")
         self.include_archives = ctk.BooleanVar(value=False)
         self.search_var = ctk.StringVar()
+
+        # CORRECTION : Définition de self.callbacks au niveau de l'instance
+        self.callbacks = {
+            'voir_pj': self._action_voir_pj,
+            'dl_pj': self._action_telecharger_pj,
+            'mlupo_accepter': self._action_mlupo_accepter,
+            'mlupo_refuser': self._action_mlupo_refuser,
+            'jdurousset_valider': self._action_jdurousset_valider,
+            'jdurousset_refuser': self._action_jdurousset_refuser,
+            'pdiop_confirmer_paiement': self._action_pdiop_confirmer_paiement,
+            'pneri_annuler': self._action_pneri_annuler,
+            'pneri_resoumettre': self._action_pneri_resoumettre,
+            'mlupo_resoumettre_constat': self._action_mlupo_resoumettre_constat,
+            'supprimer_demande': self._action_supprimer_demande,
+            'voir_historique_docs': self._action_voir_historique_docs,
+            'admin_manual_archive': self._action_admin_manual_archive
+        }
 
         self._creer_widgets()
         self.afficher_liste_demandes(force_reload=True)
@@ -183,45 +195,20 @@ class MainView(ctk.CTkFrame):
         roles_str = f" (Rôles: {', '.join(self.user_roles)})" if self.user_roles else ""
         self.user_name_label.configure(text=f"{self.nom_utilisateur}{roles_str}")
 
-    def get_toutes_les_demandes_formatees(self, include_archives=False):
-        demandes = self.remboursement_controller.get_toutes_les_demandes_formatees(include_archives=include_archives)
-        demandes_formatees = []
-        for demande in demandes:
-            if 'date_creation' in demande:
-                try:
-                    demande['date_creation'] = datetime.datetime.fromisoformat(demande['date_creation']).strftime(
-                        '%d/%m/%Y %H:%M')
-                except (ValueError, TypeError):
-                    pass
-            if 'date_paiement_effectue' in demande and demande['date_paiement_effectue']:
-                try:
-                    demande['date_paiement_effectue'] = datetime.datetime.fromisoformat(
-                        demande['date_paiement_effectue']).strftime('%d/%m/%Y')
-                except (ValueError, TypeError):
-                    pass
-            for entree_hist in demande.get('historique_statuts', []):
-                if 'date' in entree_hist:
-                    try:
-                        entree_hist['date'] = datetime.datetime.fromisoformat(entree_hist['date']).strftime(
-                            '%d/%m/%Y %H:%M')
-                    except (ValueError, TypeError):
-                        pass
-            demandes_formatees.append(demande)
-        return demandes_formatees
-
     def afficher_liste_demandes(self, force_reload=False):
         if force_reload:
-            self.all_demandes = self.get_toutes_les_demandes_formatees(self.include_archives.get())
+            self.all_demandes_cache = self.remboursement_controller.get_toutes_les_demandes_formatees(
+                self.include_archives.get())
             if os.path.exists(REMBOURSEMENTS_JSON_DIR):
                 self._last_known_remboursements_mtime = os.path.getmtime(REMBOURSEMENTS_JSON_DIR)
 
         for widget in self.scrollable_frame_demandes.winfo_children():
             widget.destroy()
 
-        demandes_filtrees = self.all_demandes
+        demandes_filtrees = self.all_demandes_cache
         search_term = self.search_var.get().lower().strip()
         if search_term:
-            demandes_filtrees = [d for d in self.all_demandes if
+            demandes_filtrees = [d for d in self.all_demandes_cache if
                                  search_term in d.get('nom', '').lower() or search_term in d.get('prenom',
                                                                                                  '').lower() or search_term in str(
                                      d.get('reference_facture', '')).lower()]
@@ -245,22 +232,12 @@ class MainView(ctk.CTkFrame):
             value = demande.get(sort_field)
             if isinstance(value, str) and "date" in sort_field:
                 try:
-                    return datetime.datetime.strptime(value, '%d/%m/%Y %H:%M')
+                    return datetime.datetime.fromisoformat(value)
                 except ValueError:
                     return datetime.datetime.min
             return value if value is not None else (datetime.datetime.min if "date" in sort_field else "")
 
         demandes_a_afficher = sorted(demandes_filtrees, key=get_sort_key, reverse=reverse_sort)
-        callbacks = {'voir_pj': self._action_voir_pj, 'dl_pj': self._action_telecharger_pj,
-                     'mlupo_accepter': self._action_mlupo_accepter, 'mlupo_refuser': self._action_mlupo_refuser,
-                     'jdurousset_valider': self._action_jdurousset_valider,
-                     'jdurousset_refuser': self._action_jdurousset_refuser,
-                     'pdiop_confirmer_paiement': self._action_pdiop_confirmer_paiement,
-                     'pneri_annuler': self._action_pneri_annuler, 'pneri_resoumettre': self._action_pneri_resoumettre,
-                     'mlupo_resoumettre_constat': self._action_mlupo_resoumettre_constat,
-                     'supprimer_demande': self._action_supprimer_demande,
-                     'voir_historique_docs': self._action_voir_historique_docs,
-                     'admin_manual_archive': self._action_admin_manual_archive}
 
         if not demandes_a_afficher:
             ctk.CTkLabel(self.scrollable_frame_demandes, text="Aucune demande à afficher.",
@@ -269,12 +246,12 @@ class MainView(ctk.CTkFrame):
             for demande_data in demandes_a_afficher:
                 item_frame = RemboursementItemView(master=self.scrollable_frame_demandes, demande_data=demande_data,
                                                    current_user_name=self.nom_utilisateur, user_roles=self.user_roles,
-                                                   callbacks=callbacks)
+                                                   callbacks=self.callbacks)
                 item_frame.pack(pady=5, padx=5, fill="x", expand=True)
         self._update_notification_badge()
 
     def _update_notification_badge(self):
-        count = sum(1 for d in self.all_demandes if self._is_active_for_user(d))
+        count = sum(1 for d in self.all_demandes_cache if self._is_active_for_user(d))
         if count > 0:
             self.notification_badge.configure(text=str(count))
             self.notification_badge.place(in_=self.bouton_rafraichir, relx=1.0, rely=0.0, anchor="ne")
@@ -359,84 +336,9 @@ class MainView(ctk.CTkFrame):
             "Le changement de thème nécessite un redémarrage.")
 
     def _ouvrir_fenetre_creation_demande(self):
-        dialog = ctk.CTkToplevel(self.master)
-        dialog.title("Nouvelle Demande de Remboursement");
-        dialog.geometry("650x650");
-        dialog.transient(self.master);
-        dialog.grab_set()
-        form_frame = ctk.CTkFrame(dialog);
-        form_frame.pack(expand=True, fill="both", padx=20, pady=20);
-        form_frame.columnconfigure(1, weight=1)
-        current_row = 0;
-        labels_entries = {"Nom:": "nom", "Prénom:": "prenom", "Référence Facture:": "reference_facture",
-                          "Montant demandé (€):": "montant_demande"}
-        dialog.entries_demande = {}
-        for label_text, key_name in labels_entries.items():
-            ctk.CTkLabel(form_frame, text=label_text).grid(row=current_row, column=0, padx=5, pady=8, sticky="w")
-            entry = ctk.CTkEntry(form_frame, width=350);
-            entry.grid(row=current_row, column=1, padx=5, pady=8, sticky="ew");
-            dialog.entries_demande[key_name] = entry;
-            current_row += 1
-        ctk.CTkLabel(form_frame, text="Description/Raison:").grid(row=current_row, column=0, padx=5, pady=(8, 0),
-                                                                  sticky="nw")
-        dialog.textbox_description = ctk.CTkTextbox(form_frame, width=350, height=100);
-        dialog.textbox_description.grid(row=current_row, column=1, padx=5, pady=8, sticky="ew");
-        current_row += 1
-        dialog.chemin_facture_var = ctk.StringVar(value="Aucun fichier sélectionné (Optionnel)");
-        dialog.chemin_rib_var = ctk.StringVar(value="Aucun fichier sélectionné");
-        dialog._entry_chemin_facture_complet = None;
-        dialog._entry_chemin_rib_complet = None
-
-        def selectionner_facture():
-            chemin = self.remboursement_controller.selectionner_fichier_document_ou_image(
-                "Sélectionner la Facture (Optionnel)")
-            if chemin:
-                dialog.chemin_facture_var.set(os.path.basename(chemin));
-                dialog._entry_chemin_facture_complet = chemin
-                if chemin.lower().endswith(".pdf"):
-                    infos_extraites = self.remboursement_controller.extraire_info_facture_pdf(chemin)
-                    for key, value in {"nom": "nom", "prenom": "prenom", "reference": "reference_facture"}.items():
-                        if infos_extraites.get(key): dialog.entries_demande[value].delete(0, "end");
-                        dialog.entries_demande[value].insert(0, infos_extraites.get(key))
-            else:
-                dialog.chemin_facture_var.set(
-                    "Aucun fichier sélectionné (Optionnel)"); dialog._entry_chemin_facture_complet = None
-
-        ctk.CTkButton(form_frame, text="Choisir Facture (Optionnel)", command=selectionner_facture).grid(
-            row=current_row, column=0, padx=5, pady=10, sticky="w")
-        ctk.CTkLabel(form_frame, textvariable=dialog.chemin_facture_var, wraplength=300).grid(row=current_row, column=1,
-                                                                                              padx=5, pady=10,
-                                                                                              sticky="ew");
-        current_row += 1
-
-        def selectionner_rib():
-            chemin = self.remboursement_controller.selectionner_fichier_document_ou_image(
-                "Sélectionner le RIB (Obligatoire)")
-            if chemin: dialog.chemin_rib_var.set(os.path.basename(chemin)); dialog._entry_chemin_rib_complet = chemin
-
-        ctk.CTkButton(form_frame, text="Choisir RIB (Obligatoire)", command=selectionner_rib).grid(row=current_row,
-                                                                                                   column=0, padx=5,
-                                                                                                   pady=10, sticky="w")
-        ctk.CTkLabel(form_frame, textvariable=dialog.chemin_rib_var, wraplength=300).grid(row=current_row, column=1,
-                                                                                          padx=5, pady=10, sticky="ew");
-        current_row += 1
-
-        def soumettre_demande():
-            succes, message = self.remboursement_controller.creer_demande_remboursement(
-                dialog.entries_demande["nom"].get(), dialog.entries_demande["prenom"].get(),
-                dialog.entries_demande["reference_facture"].get(), dialog.entries_demande["montant_demande"].get(),
-                dialog.textbox_description.get("1.0", "end-1c").strip(),
-                getattr(dialog, '_entry_chemin_facture_complet', None),
-                getattr(dialog, '_entry_chemin_rib_complet', None))
-            if succes:
-                messagebox.showinfo("Succès", message, parent=dialog); dialog.destroy(); self.afficher_liste_demandes(
-                    force_reload=True)
-            else:
-                messagebox.showerror("Erreur", message, parent=dialog)
-
-        ctk.CTkButton(form_frame, text="Enregistrer la Demande", command=soumettre_demande, height=35).grid(
-            row=current_row, column=0, columnspan=2, pady=25, padx=5)
-        dialog.after(100, lambda: dialog.entries_demande["nom"].focus_set())
+        # La logique de création est maintenant dans son propre dialogue
+        from views.dialogs.creation_demande_dialog import CreationDemandeDialog
+        CreationDemandeDialog(self, self.remboursement_controller)
 
     def _action_voir_pj(self, demande_id, rel_path):
         chemin_pj, temp_dir = self.remboursement_controller.get_viewable_attachment_path(demande_id, rel_path)
@@ -455,13 +357,9 @@ class MainView(ctk.CTkFrame):
             messagebox.showerror("Erreur", message, parent=self)
 
     def _action_mlupo_accepter(self, id_demande):
-        commentaire = simpledialog.askstring("Acceptation Constat", "Commentaire (obligatoire) :", parent=self)
-        if commentaire:
-            succes, msg = self.remboursement_controller.mlupo_accepter_constat(id_demande, commentaire)
-            if succes:
-                self.afficher_liste_demandes(force_reload=True)
-            else:
-                messagebox.showerror("Erreur", msg, parent=self)
+        # La logique a été déplacée dans un fichier séparé
+        from views.dialogs.acceptation_constat_dialog import AcceptationConstatDialog
+        AcceptationConstatDialog(self, self.remboursement_controller, id_demande)
 
     def _action_mlupo_refuser(self, id_demande):
         commentaire = simpledialog.askstring("Refus", "Motif du refus :", parent=self)
@@ -502,194 +400,21 @@ class MainView(ctk.CTkFrame):
     def _action_pneri_annuler(self, id_demande):
         commentaire = simpledialog.askstring("Annulation", "Raison de l'annulation (obligatoire) :", parent=self)
         if commentaire:
-            succes, msg = self.remboursement_controller.pneri_annuler_demande(id_demande, commentaire)
+            succes, msg = self.remboursement_controller.annuler_demande(id_demande, commentaire)
             if succes:
                 self.afficher_liste_demandes(force_reload=True)
             else:
                 messagebox.showerror("Erreur", msg, parent=self)
 
-    def _action_pneri_resoumettre(self, id_demande: str):
-        dialog = ctk.CTkToplevel(self.master)
-        dialog.title(f"Corriger Demande {id_demande[:8]}")
-        dialog.geometry("600x550")
-        dialog.transient(self.master);
-        dialog.grab_set()
+    def _action_pneri_resoumettre(self, id_demande):
+        # La logique a été déplacée dans un fichier séparé
+        from views.dialogs.resoumission_demande_dialog import ResoumissionDemandeDialog
+        ResoumissionDemandeDialog(self, self.remboursement_controller, id_demande)
 
-        main_frame = ctk.CTkFrame(dialog, fg_color="transparent")
-        main_frame.pack(expand=True, fill="both", padx=20, pady=10)
-
-        ctk.CTkLabel(main_frame, text="Veuillez fournir les documents mis à jour et un commentaire.").pack(pady=(0, 15))
-
-        demande_data = self.remboursement_controller.get_demande_by_id(id_demande)
-
-        dialog.new_facture_path = None
-        dialog.new_rib_path = None
-        keep_facture_var = ctk.BooleanVar(value=False)
-        keep_rib_var = ctk.BooleanVar(value=False)
-
-        btn_sel_facture = ctk.CTkButton(main_frame, text="Choisir Nouvelle Facture (Optionnel)")
-        chemin_facture_var = ctk.StringVar(value="Aucun fichier sélectionné")
-        lbl_facture_sel = ctk.CTkLabel(main_frame, textvariable=chemin_facture_var)
-        original_text_color = lbl_facture_sel.cget("text_color")
-
-        btn_sel_facture.pack(anchor="w", padx=20, pady=(5, 2))
-        lbl_facture_sel.pack(anchor="w", padx=20, pady=(0, 5))
-
-        factures_existantes = demande_data.get("chemins_factures_stockees", [])
-        cb_keep_facture = ctk.CTkCheckBox(main_frame,
-                                          text=f"Conserver la facture : {os.path.basename(factures_existantes[-1]) if factures_existantes else 'N/A'}",
-                                          variable=keep_facture_var)
-        if not factures_existantes: cb_keep_facture.configure(state="disabled")
-        cb_keep_facture.pack(anchor="w", padx=20, pady=(0, 10))
-
-        btn_sel_rib = ctk.CTkButton(main_frame, text="Choisir Nouveau RIB")
-        chemin_rib_var = ctk.StringVar(value="Aucun fichier sélectionné")
-        lbl_rib_sel = ctk.CTkLabel(main_frame, textvariable=chemin_rib_var)
-        btn_sel_rib.pack(anchor="w", padx=20, pady=(5, 2))
-        lbl_rib_sel.pack(anchor="w", padx=20, pady=(0, 5))
-
-        ribs_existants = demande_data.get("chemins_rib_stockes", [])
-        cb_keep_rib = ctk.CTkCheckBox(main_frame,
-                                      text=f"Conserver le RIB : {os.path.basename(ribs_existants[-1]) if ribs_existants else 'N/A'}",
-                                      variable=keep_rib_var)
-        if not ribs_existants: cb_keep_rib.configure(state="disabled")
-        cb_keep_rib.pack(anchor="w", padx=20, pady=(0, 10))
-
-        def _toggle_facture_ui():
-            if keep_facture_var.get():
-                btn_sel_facture.configure(state="disabled");
-                lbl_facture_sel.configure(text_color="gray");
-                dialog.new_facture_path = None;
-                chemin_facture_var.set("Ancienne facture conservée")
-            else:
-                btn_sel_facture.configure(state="normal");
-                lbl_facture_sel.configure(text_color=original_text_color);
-                chemin_facture_var.set("Aucun fichier sélectionné")
-
-        cb_keep_facture.configure(command=_toggle_facture_ui)
-
-        def _toggle_rib_ui():
-            if keep_rib_var.get():
-                btn_sel_rib.configure(state="disabled");
-                lbl_rib_sel.configure(text_color="gray");
-                dialog.new_rib_path = None;
-                chemin_rib_var.set("Ancien RIB conservé")
-            else:
-                btn_sel_rib.configure(state="normal");
-                lbl_rib_sel.configure(text_color=original_text_color);
-                chemin_rib_var.set("Aucun fichier sélectionné")
-
-        cb_keep_rib.configure(command=_toggle_rib_ui)
-
-        def _sel_new_facture():
-            path = self.remboursement_controller.selectionner_fichier_document_ou_image("Nouvelle Facture");
-            if path: dialog.new_facture_path = path; chemin_facture_var.set(os.path.basename(path))
-
-        btn_sel_facture.configure(command=_sel_new_facture)
-
-        def _sel_new_rib():
-            path = self.remboursement_controller.selectionner_fichier_document_ou_image("Nouveau RIB");
-            if path: dialog.new_rib_path = path; chemin_rib_var.set(os.path.basename(path))
-
-        btn_sel_rib.configure(command=_sel_new_rib)
-
-        ctk.CTkLabel(main_frame, text="Commentaire de correction (Obligatoire):").pack(pady=(15, 0))
-        commentaire_box = ctk.CTkTextbox(main_frame, height=80);
-        commentaire_box.pack(pady=5, padx=20, fill="x", expand=True);
-        commentaire_box.focus()
-
-        def submit():
-            commentaire = commentaire_box.get("1.0", "end-1c").strip()
-            if not keep_rib_var.get() and not dialog.new_rib_path: messagebox.showerror("Erreur",
-                                                                                        "Un nouveau RIB est obligatoire si vous ne conservez pas l'ancien.",
-                                                                                        parent=dialog); return
-            if not commentaire: messagebox.showerror("Erreur",
-                                                     "Un commentaire expliquant la correction est obligatoire.",
-                                                     parent=dialog); return
-            succes, msg = self.remboursement_controller.pneri_resoumettre_demande_corrigee(id_demande, commentaire,
-                                                                                           dialog.new_facture_path,
-                                                                                           dialog.new_rib_path)
-            if succes:
-                messagebox.showinfo("Succès", msg, parent=self); self.afficher_liste_demandes(
-                    force_reload=True); dialog.destroy()
-            else:
-                messagebox.showerror("Erreur", msg, parent=dialog)
-
-        ctk.CTkButton(dialog, text="Resoumettre la Demande", command=submit).pack(pady=20)
-
-    def _action_mlupo_resoumettre_constat(self, id_demande: str):
-        # Cette méthode est restaurée à partir de l'original
-        dialog = ctk.CTkToplevel(self.master)
-        dialog.title(f"Corriger Constat TP {id_demande[:8]}")
-        dialog.geometry("500x450")
-        dialog.transient(self.master);
-        dialog.grab_set()
-
-        main_frame = ctk.CTkFrame(dialog, fg_color="transparent")
-        main_frame.pack(expand=True, fill="both", padx=20, pady=10)
-
-        ctk.CTkLabel(main_frame, text="Veuillez fournir une nouvelle preuve et un commentaire.").pack(pady=(0, 15))
-
-        demande_data = self.remboursement_controller.get_demande_by_id(id_demande)
-        dialog.new_pj_path = None
-        keep_pj_var = ctk.BooleanVar(value=False)
-
-        btn_sel_pj = ctk.CTkButton(main_frame, text="Choisir Nouvelle Preuve TP")
-        chemin_pj_var = ctk.StringVar(value="Aucun fichier sélectionné")
-        lbl_pj_sel = ctk.CTkLabel(main_frame, textvariable=chemin_pj_var)
-        original_text_color = lbl_pj_sel.cget("text_color")
-
-        btn_sel_pj.pack(anchor="w", padx=20, pady=(5, 2))
-        lbl_pj_sel.pack(anchor="w", padx=20, pady=(0, 5))
-
-        pjs_existantes = demande_data.get("pieces_capture_trop_percu", [])
-        cb_keep_pj = ctk.CTkCheckBox(main_frame,
-                                     text=f"Conserver la preuve : {os.path.basename(pjs_existantes[-1]) if pjs_existantes else 'N/A'}",
-                                     variable=keep_pj_var)
-        if not pjs_existantes: cb_keep_pj.configure(state="disabled")
-        cb_keep_pj.pack(anchor="w", padx=20, pady=(0, 10))
-
-        def _toggle_pj_ui():
-            if keep_pj_var.get():
-                btn_sel_pj.configure(state="disabled");
-                lbl_pj_sel.configure(text_color="gray");
-                dialog.new_pj_path = None;
-                chemin_pj_var.set("Ancienne preuve conservée")
-            else:
-                btn_sel_pj.configure(state="normal");
-                lbl_pj_sel.configure(text_color=original_text_color);
-                chemin_pj_var.set("Aucun fichier sélectionné")
-
-        cb_keep_pj.configure(command=_toggle_pj_ui)
-
-        def _sel_new_pj_tp():
-            path = self.remboursement_controller.selectionner_fichier_document_ou_image("Nouvelle Preuve Trop-Perçu")
-            if path: dialog.new_pj_path = path; chemin_pj_var.set(os.path.basename(path))
-
-        btn_sel_pj.configure(command=_sel_new_pj_tp)
-
-        ctk.CTkLabel(main_frame, text="Commentaire de correction (Obligatoire):").pack(pady=(15, 0))
-        commentaire_box = ctk.CTkTextbox(main_frame, height=80);
-        commentaire_box.pack(pady=5, padx=20, fill="x", expand=True);
-        commentaire_box.focus()
-
-        def submit():
-            commentaire = commentaire_box.get("1.0", "end-1c").strip()
-            if not keep_pj_var.get() and not dialog.new_pj_path: messagebox.showerror("Erreur",
-                                                                                      "Une nouvelle preuve est obligatoire si vous ne conservez pas l'ancienne.",
-                                                                                      parent=dialog); return
-            if not commentaire: messagebox.showerror("Erreur",
-                                                     "Un commentaire expliquant la correction est obligatoire.",
-                                                     parent=dialog); return
-            succes, msg = self.remboursement_controller.mlupo_resoumettre_constat_corrige(id_demande, commentaire,
-                                                                                          dialog.new_pj_path)
-            if succes:
-                messagebox.showinfo("Succès", msg, parent=self); self.afficher_liste_demandes(
-                    force_reload=True); dialog.destroy()
-            else:
-                messagebox.showerror("Erreur", msg, parent=dialog)
-
-        ctk.CTkButton(dialog, text="Resoumettre le Constat", command=submit).pack(pady=20)
+    def _action_mlupo_resoumettre_constat(self, id_demande):
+        # La logique a été déplacée dans un fichier séparé
+        from views.dialogs.resoumission_constat_dialog import ResoumissionConstatDialog
+        ResoumissionConstatDialog(self, self.remboursement_controller, id_demande)
 
     def _action_supprimer_demande(self, id_demande):
         if messagebox.askyesno("Confirmation", f"Êtes-vous sûr de vouloir supprimer la demande {id_demande}?",
