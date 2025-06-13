@@ -1,4 +1,3 @@
-# views/profile_view.py
 import os
 import shutil
 import customtkinter as ctk
@@ -11,18 +10,21 @@ from utils.password_utils import check_password_strength
 
 
 class ProfileView(ctk.CTkToplevel):
-    def __init__(self, master, current_user: str, auth_controller, user_data: dict, on_save_callback):
+    def __init__(self, master, auth_controller, app_controller, user_data: dict, on_save_callback):
         super().__init__(master)
         self.transient(master)
         self.grab_set()
-        self.title(f"Profil de {current_user}")
-        self.geometry("500x750")
-        self.resizable(False, False)
 
-        self.current_user = current_user
+        self.master = master
         self.auth_controller = auth_controller
+        self.app_controller = app_controller
         self.user_data = user_data
         self.on_save_callback = on_save_callback
+        self.current_user = user_data.get("login")
+
+        self.title(f"Profil de {self.current_user}")
+        self.geometry("500x750")
+        self.resizable(False, False)
 
         self.new_profile_pic_source_path = None
         self.profile_pic_rel_path = user_data.get("profile_picture_path")
@@ -51,13 +53,13 @@ class ProfileView(ctk.CTkToplevel):
         self.old_password_entry = ctk.CTkEntry(main_frame, show="*")
         self.old_password_entry.pack(fill="x", padx=20)
 
-        ctk.CTkLabel(main_frame, text="Nouveau mot de passe (laisser vide pour ne pas changer):", anchor="w").pack(
+        ctk.CTkLabel(main_frame, text="Nouveau mot de passe (laisser vide pour ne pas changer):",
+                     anchor="w").pack(
             fill="x", padx=20, pady=(5, 2))
         self.new_password_entry = ctk.CTkEntry(main_frame, show="*")
         self.new_password_entry.pack(fill="x", padx=20)
         self.new_password_entry.bind("<KeyRelease>", self._update_password_strength)
 
-        # Indicateur de force du mot de passe
         self.strength_progress = ctk.CTkProgressBar(main_frame, progress_color="grey")
         self.strength_progress.set(0)
         self.strength_progress.pack(fill="x", padx=20, pady=(5, 2))
@@ -85,7 +87,8 @@ class ProfileView(ctk.CTkToplevel):
         button_frame.pack(pady=30)
         ctk.CTkButton(button_frame, text="Enregistrer", command=self._save_profile, width=150).pack(side="left",
                                                                                                     padx=10)
-        ctk.CTkButton(button_frame, text="Annuler", command=self.destroy, fg_color="gray").pack(side="left", padx=10)
+        ctk.CTkButton(button_frame, text="Annuler", command=self.destroy, fg_color="gray").pack(side="left",
+                                                                                                padx=10)
 
     def _toggle_password_visibility(self):
         show_char = "" if self.show_password_var.get() else "*"
@@ -103,11 +106,8 @@ class ProfileView(ctk.CTkToplevel):
         progress = score / 5.0
 
         colors = {
-            "Très faible": "#D32F2F",
-            "Faible": "#F44336",
-            "Moyen": "#FFC107",
-            "Fort": "#4CAF50",
-            "Très fort": "#4CAF50"
+            "Très faible": "#D32F2F", "Faible": "#F44336", "Moyen": "#FFC107",
+            "Fort": "#4CAF50", "Très fort": "#4CAF50"
         }
         color = colors.get(feedback, "grey")
 
@@ -152,15 +152,21 @@ class ProfileView(ctk.CTkToplevel):
     def _remove_profile_picture(self):
         if messagebox.askyesno("Confirmation", "Êtes-vous sûr de vouloir supprimer votre photo de profil ?",
                                parent=self):
-            success, message = self.auth_controller.remove_user_profile_picture(self.current_user)
-            if success:
-                messagebox.showinfo("Succès", "Photo de profil supprimée.", parent=self)
-                self.profile_pic_rel_path = None
-                self.load_profile_picture()
-                if self.on_save_callback:
-                    self.on_save_callback()
-            else:
-                messagebox.showerror("Erreur", message, parent=self)
+            def task():
+                return self.auth_controller.remove_user_profile_picture(self.current_user)
+
+            def on_complete(result):
+                success, message = result
+                if success:
+                    self.app_controller.show_toast("Photo de profil supprimée.")
+                    self.profile_pic_rel_path = None
+                    self.load_profile_picture()
+                    if self.on_save_callback:
+                        self.on_save_callback()
+                else:
+                    messagebox.showerror("Erreur", message, parent=self)
+
+            self.app_controller.run_threaded_task(task, on_complete)
 
     def _handle_picture_save(self) -> str | None:
         if not self.new_profile_pic_source_path:
@@ -174,7 +180,8 @@ class ProfileView(ctk.CTkToplevel):
             shutil.copy2(self.new_profile_pic_source_path, destination_path)
             return new_filename
         except Exception as e:
-            messagebox.showerror("Erreur", f"Impossible d'enregistrer la photo de profil : {e}", parent=self)
+            messagebox.showerror("Erreur", f"Impossible d'enregistrer la photo de profil : {e}",
+                                 parent=self)
             return self.profile_pic_rel_path
 
     def _save_profile(self):
@@ -183,28 +190,35 @@ class ProfileView(ctk.CTkToplevel):
         new_password = self.new_password_entry.get()
 
         if new_password and not old_password:
-            messagebox.showerror("Erreur", "Veuillez entrer votre ancien mot de passe pour le modifier.", parent=self)
+            messagebox.showerror("Erreur",
+                                 "Veuillez entrer votre ancien mot de passe pour le modifier.",
+                                 parent=self)
             return
 
-        new_pfp_rel_path = self._handle_picture_save()
+        def task():
+            new_pfp_rel_path = self._handle_picture_save()
+            updated_prefs = {
+                "theme_color": self.theme_menu.get(),
+                "default_filter": self.filter_menu.get(),
+                "profile_picture_path": new_pfp_rel_path
+            }
+            return self.auth_controller.update_user_profile(
+                login=self.current_user,
+                new_email=new_email,
+                old_password=old_password if old_password else None,
+                new_password=new_password if new_password else None,
+                preferences=updated_prefs
+            )
 
-        updated_prefs = {
-            "theme_color": self.theme_menu.get(),
-            "default_filter": self.filter_menu.get(),
-            "profile_picture_path": new_pfp_rel_path
-        }
-
-        success, message = self.auth_controller.update_user_profile(
-            login=self.current_user,
-            new_email=new_email,
-            old_password=old_password if old_password else None,
-            new_password=new_password if new_password else None,
-            preferences=updated_prefs
-        )
-
-        if success:
-            if self.on_save_callback:
-                self.on_save_callback()
+        def on_complete(result):
+            success, message = result
+            if success:
+                if self.on_save_callback:
+                    self.on_save_callback()
+                self.app_controller.show_toast("Profil enregistré avec succès.")
+            else:
+                messagebox.showerror("Erreur", message, parent=self.master)
             self.destroy()
-        else:
-            messagebox.showerror("Erreur", message, parent=self)
+
+        self.withdraw()
+        self.app_controller.run_threaded_task(task, on_complete)

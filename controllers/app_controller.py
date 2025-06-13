@@ -1,32 +1,43 @@
-# controllers/app_controller.py
 import customtkinter as ctk
 import os
 import sys
+import threading
+import queue
 from tkinter import messagebox
 from views.login_view import LoginView
 from views.main_view import MainView
 from controllers.auth_controller import AuthController
 from controllers.remboursement_controller import RemboursementController
+from controllers.password_reset_controller import PasswordResetController
 from models import user_model
+from utils.ui_utils import LoadingOverlay, ToastNotification
 
 
 class AppController:
     def __init__(self, root_tk_app):
         self.root = root_tk_app
         self.auth_controller = AuthController()
+        self.password_reset_controller = PasswordResetController(self.auth_controller)
         self.remboursement_controller = None
         self.current_user = None
         self.login_view = None
         self.main_view = None
 
+        self.loading_overlay = LoadingOverlay(self.root)
+        self.toast_notification = ToastNotification(self.root)
+
         self._run_startup_tasks()
         self.show_login_view()
 
     def _run_startup_tasks(self):
-        print("Lancement des tâches de démarrage (archivage...).")
-        rc_temp = RemboursementController(utilisateur_actuel="system")
-        rc_temp.archive_old_requests()
-        print("Tâches de démarrage terminées.")
+        def task():
+            print("Lancement des tâches de démarrage (archivage...).")
+            rc_temp = RemboursementController(utilisateur_actuel="system")
+            rc_temp.archive_old_requests()
+            print("Tâches de démarrage terminées.")
+
+        startup_thread = threading.Thread(target=task, daemon=True)
+        startup_thread.start()
 
     def _remboursement_controller_factory(self, nom_utilisateur: str) -> RemboursementController:
         if self.remboursement_controller is None:
@@ -34,6 +45,36 @@ class AppController:
         else:
             self.remboursement_controller.utilisateur_actuel = nom_utilisateur
         return self.remboursement_controller
+
+    def run_threaded_task(self, task_function, on_complete):
+        self.loading_overlay.show()
+        task_queue = queue.Queue()
+
+        def worker():
+            try:
+                result = task_function()
+                task_queue.put(result)
+            except Exception as e:
+                task_queue.put(e)
+
+        def check_queue():
+            try:
+                result = task_queue.get_nowait()
+                self.loading_overlay.hide()
+                if isinstance(result, Exception):
+                    print(f"Erreur dans le thread: {result}")
+                    messagebox.showerror("Erreur Inattendue", f"Une erreur est survenue durant l'opération:\n{result}")
+                else:
+                    on_complete(result)
+            except queue.Empty:
+                self.root.after(100, check_queue)
+
+        threading.Thread(target=worker, daemon=True).start()
+        self.root.after(100, check_queue)
+
+    def show_toast(self, message: str, m_type: str = 'success'):
+        """Affiche une notification non-bloquante."""
+        self.toast_notification.show(message, m_type)
 
     def show_login_view(self):
         self.current_user = None
@@ -44,7 +85,6 @@ class AppController:
             self.main_view.destroy()
             self.main_view = None
 
-        # CORRECTION : On passe l'objet AppController entier ('self')
         self.login_view = LoginView(self.root, self.auth_controller, self)
         self.root.title("Application de Remboursement - Connexion")
 

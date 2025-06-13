@@ -1,4 +1,3 @@
-# views/admin_user_management_view.py
 import customtkinter as ctk
 from tkinter import messagebox, simpledialog
 from config.settings import ASSIGNABLE_ROLES
@@ -6,9 +5,11 @@ from .admin_config_view import AdminConfigView
 
 
 class AdminUserManagementView(ctk.CTkToplevel):
-    def __init__(self, master, auth_controller):
+    def __init__(self, master, auth_controller, app_controller):
         super().__init__(master)
         self.auth_controller = auth_controller
+        self.app_controller = app_controller
+        self.master = master
 
         self.title("Gestion des Utilisateurs (Admin)")
         self.geometry("850x600")
@@ -40,7 +41,8 @@ class AdminUserManagementView(ctk.CTkToplevel):
                                         command=self._open_create_user_dialog)
         btn_create_user.pack(side="left", padx=5)
 
-        self.scrollable_frame = ctk.CTkScrollableFrame(main_frame, label_text="Utilisateurs enregistrés (sauf 'admin')")
+        self.scrollable_frame = ctk.CTkScrollableFrame(main_frame,
+                                                       label_text="Utilisateurs enregistrés (sauf 'admin')")
         self.scrollable_frame.pack(expand=True, fill="both", padx=5, pady=(0, 5))
         self.scrollable_frame.grid_columnconfigure(0, weight=1)
 
@@ -50,82 +52,96 @@ class AdminUserManagementView(ctk.CTkToplevel):
         close_button.pack(pady=10)
 
     def _open_smtp_config_dialog(self):
-        AdminConfigView(self, self.auth_controller)
+        AdminConfigView(self, self.auth_controller, self.app_controller)
 
     def populate_user_list(self):
-        for widget in self.scrollable_frame.winfo_children():
-            widget.destroy()
+        def task():
+            return self.auth_controller.get_all_users_for_management()
 
-        utilisateurs = self.auth_controller.get_all_users_for_management()
+        def on_complete(utilisateurs):
+            for widget in self.scrollable_frame.winfo_children():
+                widget.destroy()
 
-        if not utilisateurs:
-            ctk.CTkLabel(self.scrollable_frame, text="Aucun autre utilisateur à gérer.").pack(pady=10)
-            return
+            if not utilisateurs:
+                ctk.CTkLabel(self.scrollable_frame, text="Aucun autre utilisateur à gérer.").pack(pady=10)
+                return
 
-        for i, user_data in enumerate(utilisateurs):
-            user_login = user_data.get("login")
-            user_email = user_data.get("email")
-            user_roles_list = user_data.get("roles", [])
-            user_roles_str = ", ".join(user_roles_list) if user_roles_list else "Aucun rôle assigné"
+            for i, user_data in enumerate(utilisateurs):
+                user_login = user_data.get("login")
+                user_email = user_data.get("email")
+                user_roles_list = user_data.get("roles", [])
+                user_roles_str = ", ".join(user_roles_list) if user_roles_list else "Aucun rôle assigné"
 
-            item_frame = ctk.CTkFrame(self.scrollable_frame, corner_radius=3)
-            item_frame.pack(fill="x", pady=(2, 2), padx=4)
+                item_frame = ctk.CTkFrame(self.scrollable_frame, corner_radius=3)
+                item_frame.pack(fill="x", pady=(2, 2), padx=4)
 
-            item_frame.columnconfigure(0, weight=2)
-            item_frame.columnconfigure(1, weight=2)
-            item_frame.columnconfigure(2, weight=0)
-            item_frame.columnconfigure(3, weight=0)
+                item_frame.columnconfigure(0, weight=2)
+                item_frame.columnconfigure(1, weight=2)
+                item_frame.columnconfigure(2, weight=0)
+                item_frame.columnconfigure(3, weight=0)
 
-            info_text = f"{user_login}"
-            ctk.CTkLabel(item_frame, text=info_text, anchor="w", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0,
-                                                                                                       padx=5, pady=3,
-                                                                                                       sticky="w")
+                info_text = f"{user_login}"
+                ctk.CTkLabel(item_frame, text=info_text, anchor="w",
+                             font=ctk.CTkFont(weight="bold")).grid(row=0, column=0,
+                                                                   padx=5, pady=3,
+                                                                   sticky="w")
 
-            email_text = f"Email: {user_email}"
-            ctk.CTkLabel(item_frame, text=email_text, anchor="w", font=ctk.CTkFont(size=11)).grid(row=1, column=0,
-                                                                                                  padx=5, pady=(0, 3),
-                                                                                                  sticky="w")
+                email_text = f"Email: {user_email}"
+                ctk.CTkLabel(item_frame, text=email_text, anchor="w", font=ctk.CTkFont(size=11)).grid(
+                    row=1, column=0,
+                    padx=5, pady=(0, 3),
+                    sticky="w")
 
-            roles_text = f"Rôles: {user_roles_str}"
-            ctk.CTkLabel(item_frame, text=roles_text, anchor="w", font=ctk.CTkFont(size=11), wraplength=250).grid(row=0,
-                                                                                                                  rowspan=2,
-                                                                                                                  column=1,
-                                                                                                                  padx=5,
-                                                                                                                  pady=3,
-                                                                                                                  sticky="w")
+                roles_text = f"Rôles: {user_roles_str}"
+                ctk.CTkLabel(item_frame, text=roles_text, anchor="w", font=ctk.CTkFont(size=11),
+                             wraplength=250).grid(row=0,
+                                                  rowspan=2,
+                                                  column=1,
+                                                  padx=5,
+                                                  pady=3,
+                                                  sticky="w")
 
-            if user_login != "admin":
-                modify_button = ctk.CTkButton(
-                    item_frame,
-                    text="Modifier",
-                    width=70,
-                    command=lambda u_login=user_login, u_email=user_email,
-                                   u_roles=user_roles_list: self._open_modify_user_dialog(u_login, u_email, u_roles)
-                )
-                modify_button.grid(row=0, rowspan=2, column=2, padx=(10, 2), pady=5, sticky="e")
+                if user_login != "admin":
+                    modify_button = ctk.CTkButton(
+                        item_frame,
+                        text="Modifier",
+                        width=70,
+                        command=lambda u_login=user_login, u_email=user_email,
+                                       u_roles=user_roles_list: self._open_modify_user_dialog(u_login,
+                                                                                              u_email,
+                                                                                              u_roles)
+                    )
+                    modify_button.grid(row=0, rowspan=2, column=2, padx=(10, 2), pady=5, sticky="e")
 
-                delete_button = ctk.CTkButton(
-                    item_frame,
-                    text="Supprimer",
-                    width=70,
-                    fg_color="red",
-                    hover_color="darkred",
-                    command=lambda u=user_login: self._confirm_delete_user(u)
-                )
-                delete_button.grid(row=0, rowspan=2, column=3, padx=(2, 5), pady=5, sticky="e")
+                    delete_button = ctk.CTkButton(
+                        item_frame,
+                        text="Supprimer",
+                        width=70,
+                        fg_color="red",
+                        hover_color="darkred",
+                        command=lambda u=user_login: self._confirm_delete_user(u)
+                    )
+                    delete_button.grid(row=0, rowspan=2, column=3, padx=(2, 5), pady=5, sticky="e")
+
+        self.app_controller.run_threaded_task(task, on_complete)
 
     def _confirm_delete_user(self, username_to_delete: str):
         if messagebox.askyesno("Confirmation de Suppression",
                                f"Êtes-vous sûr de vouloir supprimer l'utilisateur '{username_to_delete}' ?\n"
                                "Cette action est irréversible.",
                                icon=messagebox.WARNING, parent=self):
+            def task():
+                return self.auth_controller.admin_delete_user(username_to_delete)
 
-            succes, message = self.auth_controller.admin_delete_user(username_to_delete)
-            if succes:
-                messagebox.showinfo("Suppression Réussie", message, parent=self)
-                self.populate_user_list()
-            else:
-                messagebox.showerror("Erreur de Suppression", message, parent=self)
+            def on_complete(result):
+                succes, message = result
+                if succes:
+                    self.app_controller.show_toast(message)
+                    self.populate_user_list()
+                else:
+                    messagebox.showerror("Erreur de Suppression", message, parent=self)
+
+            self.app_controller.run_threaded_task(task, on_complete)
 
     def _open_create_user_dialog(self):
         self._open_user_form_dialog(mode="create")
@@ -175,7 +191,8 @@ class AdminUserManagementView(ctk.CTkToplevel):
         assignable_roles_list = self.auth_controller.get_assignable_roles()
         for role_name in assignable_roles_list:
             var = ctk.StringVar(value="on" if role_name in roles_actuels else "off")
-            cb = ctk.CTkCheckBox(roles_scroll_frame, text=role_name, variable=var, onvalue="on", offvalue="off")
+            cb = ctk.CTkCheckBox(roles_scroll_frame, text=role_name, variable=var, onvalue="on",
+                                 offvalue="off")
             cb.pack(anchor="w", padx=10, pady=2)
             role_vars[role_name] = var
 
@@ -185,67 +202,81 @@ class AdminUserManagementView(ctk.CTkToplevel):
             password_val = password_entry.get().strip()
             selected_roles = [role for role, var in role_vars.items() if var.get() == "on"]
 
-            if mode == "create":
-                if not password_val:
-                    messagebox.showerror("Erreur", "Le mot de passe est requis pour créer un utilisateur.",
-                                         parent=dialog)
-                    return
-                succes, message = self.auth_controller.admin_create_user(login_val, email_val, password_val,
-                                                                         selected_roles)
-            else:
-                succes, message = self.auth_controller.admin_update_user_details(login_original, login_val, email_val,
-                                                                                 selected_roles,
-                                                                                 password_val if password_val else None)
+            def task():
+                if mode == "create":
+                    if not password_val:
+                        return False, "Le mot de passe est requis pour créer un utilisateur."
+                    return self.auth_controller.admin_create_user(login_val, email_val,
+                                                                  password_val,
+                                                                  selected_roles)
+                else:
+                    return self.auth_controller.admin_update_user_details(login_original,
+                                                                          login_val,
+                                                                          email_val,
+                                                                          selected_roles,
+                                                                          password_val if password_val else None)
 
-            if succes:
-                messagebox.showinfo("Succès", message, parent=self)
-                self.populate_user_list()
-                dialog.destroy()
-            else:
-                messagebox.showerror("Erreur", message, parent=dialog)
+            def on_complete(result):
+                succes, message = result
+                if succes:
+                    self.app_controller.show_toast(message)
+                    self.populate_user_list()
+                    dialog.destroy()
+                else:
+                    messagebox.showerror("Erreur", message, parent=dialog)
+
+            dialog.withdraw()
+            self.app_controller.run_threaded_task(task, on_complete)
 
         submit_button_text = "Créer Utilisateur" if mode == "create" else "Enregistrer Modifications"
         submit_button = ctk.CTkButton(form_frame, text=submit_button_text, command=_submit_user_form)
         submit_button.grid(row=4, column=0, columnspan=2, pady=20)
 
-        dialog.after(100, lambda: login_entry.focus_set() if mode == "create" else email_entry.focus_set())
+        dialog.after(100,
+                     lambda: login_entry.focus_set() if mode == "create" else email_entry.focus_set())
 
     def _show_role_descriptions(self):
-        descriptions_data = self.auth_controller.get_role_descriptions_with_users()
+        def task():
+            return self.auth_controller.get_role_descriptions_with_users()
 
-        desc_window = ctk.CTkToplevel(self)
-        desc_window.title("Description des Rôles et Utilisateurs Associés")
-        desc_window.geometry("750x550")
-        desc_window.transient(self)
-        desc_window.grab_set()
+        def on_complete(descriptions_data):
+            desc_window = ctk.CTkToplevel(self)
+            desc_window.title("Description des Rôles et Utilisateurs Associés")
+            desc_window.geometry("750x550")
+            desc_window.transient(self)
+            desc_window.grab_set()
 
-        scroll_frame = ctk.CTkScrollableFrame(desc_window)
-        scroll_frame.pack(expand=True, fill="both", padx=10, pady=10)
+            scroll_frame = ctk.CTkScrollableFrame(desc_window)
+            scroll_frame.pack(expand=True, fill="both", padx=10, pady=10)
 
-        for role, data in descriptions_data.items():
-            desc = data.get("description", "Pas de description.")
-            users_with_role = data.get("utilisateurs_actuels", [])
+            for role, data in descriptions_data.items():
+                desc = data.get("description", "Pas de description.")
+                users_with_role = data.get("utilisateurs_actuels", [])
 
-            ctk.CTkLabel(scroll_frame, text=f"{role.replace('_', ' ').title()}:",
-                         font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", pady=(10, 2))
+                ctk.CTkLabel(scroll_frame, text=f"{role.replace('_', ' ').title()}:",
+                             font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", pady=(10, 2))
 
-            desc_textbox = ctk.CTkTextbox(scroll_frame, wrap="word", height=(desc.count('\n') + 2) * 18,
-                                          activate_scrollbars=False, border_width=0,
-                                          fg_color="transparent")
-            desc_textbox.insert("1.0", desc)
-            desc_textbox.configure(state="disabled")
-            desc_textbox.pack(anchor="w", fill="x", padx=10, pady=(0, 5))
+                desc_textbox = ctk.CTkTextbox(scroll_frame, wrap="word", height=(desc.count('\n') + 2) * 18,
+                                              activate_scrollbars=False, border_width=0,
+                                              fg_color="transparent")
+                desc_textbox.insert("1.0", desc)
+                desc_textbox.configure(state="disabled")
+                desc_textbox.pack(anchor="w", fill="x", padx=10, pady=(0, 5))
 
-            if users_with_role:
-                ctk.CTkLabel(scroll_frame, text="  Utilisateurs ayant ce rôle:",
-                             font=ctk.CTkFont(size=11, slant="italic")).pack(anchor="w", padx=10)
-                users_str = "\n".join([f"    - {user}" for user in users_with_role])
-                ctk.CTkLabel(scroll_frame, text=users_str, justify="left", anchor="w", font=ctk.CTkFont(size=11)).pack(
-                    anchor="w", padx=20, pady=(0, 10))
-            else:
-                ctk.CTkLabel(scroll_frame, text="  Aucun utilisateur n'a actuellement ce rôle.",
-                             font=ctk.CTkFont(size=11, slant="italic")).pack(anchor="w", padx=10, pady=(0, 10))
+                if users_with_role:
+                    ctk.CTkLabel(scroll_frame, text="  Utilisateurs ayant ce rôle:",
+                                 font=ctk.CTkFont(size=11, slant="italic")).pack(anchor="w", padx=10)
+                    users_str = "\n".join([f"    - {user}" for user in users_with_role])
+                    ctk.CTkLabel(scroll_frame, text=users_str, justify="left", anchor="w",
+                                 font=ctk.CTkFont(size=11)).pack(
+                        anchor="w", padx=20, pady=(0, 10))
+                else:
+                    ctk.CTkLabel(scroll_frame, text="  Aucun utilisateur n'a actuellement ce rôle.",
+                                 font=ctk.CTkFont(size=11, slant="italic")).pack(anchor="w", padx=10,
+                                                                                 pady=(0, 10))
 
-            ctk.CTkFrame(scroll_frame, height=1, fg_color="gray50").pack(fill="x", pady=5)
+                ctk.CTkFrame(scroll_frame, height=1, fg_color="gray50").pack(fill="x", pady=5)
 
-        ctk.CTkButton(desc_window, text="Fermer", command=desc_window.destroy).pack(pady=10)
+            ctk.CTkButton(desc_window, text="Fermer", command=desc_window.destroy).pack(pady=10)
+
+        self.app_controller.run_threaded_task(task, on_complete)
